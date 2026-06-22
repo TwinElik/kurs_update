@@ -1,45 +1,15 @@
-(.venv) ubuntu@ubuntu:~/Documents/kurs_update$ python bot.py 
-Cause exception while process update id=3885474 by bot id=8863788481
-TelegramBadRequest: Telegram server says - Bad Request: message can't be edited
-Traceback (most recent call last):
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 309, in _process_update
-    response = await self.feed_update(bot, update, **kwargs)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 158, in feed_update
-    response = await self.update.wrap_outer_middleware(
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/middlewares/error.py", line 25, in __call__
-    return await handler(event, data)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/middlewares/user_context.py", line 56, in __call__
-    return await handler(event, data)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/fsm/middleware.py", line 42, in __call__
-    return await handler(event, data)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/event/telegram.py", line 121, in trigger
-    return await wrapped_inner(event, kwargs)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/event/handler.py", line 43, in call
-    return await wrapped()
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 276, in _listen_update
-    return await self.propagate_event(update_type=update_type, event=event, **kwargs)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 146, in propagate_event
-    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 141, in _wrapped
-    return await self._propagate_event(
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 166, in _propagate_event
-    response = await observer.trigger(event, **kwargs)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/event/telegram.py", line 121, in trigger
-    return await wrapped_inner(event, kwargs)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/dispatcher/event/handler.py", line 43, in call
-    return await wrapped()
-  File "/home/ubuntu/Documents/kurs_update/bot.py", line 333, in handle_text
-    await generate_all_images(message, main_rate)
-  File "/home/ubuntu/Documents/kurs_update/bot.py", line 278, in generate_all_images
-    await progress.edit_text(
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/methods/base.py", line 84, in emit
-    return await bot(self)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/bot.py", line 488, in __call__
-    return await self.session(self, method, timeout=request_timeout)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/session/base.py", line 254, in __call__
-    return cast(TelegramType, await middleware(bot, method))
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/session/aiohttp.py", line 189, in make_request
-    response = self.check_response(
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/session/base.py", line 120, in check_response
-    raise TelegramBadRequest(method=method, message=description)
-aiogram.exceptions.TelegramBadRequest: Telegram server says - Bad Request: message can't be edited
+[Unit]
+Description=Kurs Update Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/Documents/kurs_update
+ExecStart=/home/ubuntu/Documents/kurs_update/.venv/bin/python /home/ubuntu/Documents/kurs_update/bot.py
+Restart=always
+RestartSec=5
+User=ubuntu
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
