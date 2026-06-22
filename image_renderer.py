@@ -32,6 +32,14 @@ PRICE_TABLE = {
     "price_min_size": 30,
     "price_max_width": 458,
 }
+PRICE_HEADING = {
+    "date_y": 282,
+    "title_y": 340,
+    "date_size": 42,
+    "title_size": 43,
+    "title_min_size": 34,
+    "title_max_width": CANVAS_WIDTH - 170,
+}
 
 ORG_TEMPLATES = {
     "diamant": {
@@ -97,7 +105,7 @@ ORG_TEMPLATES = {
         "background": "#000000",
         "text": "#ffffff",
         "logo": SKUPKA_LOGO_PATH,
-        "phone": "+998 90 714 90 90",
+        "phone": "+998 55 055 00 99",
     },
 }
 
@@ -150,6 +158,27 @@ def draw_price_table(draw, price_ranges, fill):
         draw.text((PRICE_TABLE["left_x"], y), sample_text, font=sample_font, fill=fill)
         draw.text((PRICE_TABLE["right_edge"] - price_w, y), price_text, font=price_font, fill=fill)
         y += PRICE_TABLE["row_h"]
+
+
+def draw_price_heading(draw, template, fill, date=None):
+    date_font = load_font(PRICE_HEADING["date_size"], bold=True, family="evolventa")
+    title_font = fit_font(
+        draw,
+        template["title"],
+        PRICE_HEADING["title_max_width"],
+        start_size=PRICE_HEADING["title_size"],
+        min_size=PRICE_HEADING["title_min_size"],
+        bold=True,
+        family="evolventa",
+    )
+    draw_centered(
+        draw,
+        PRICE_HEADING["date_y"],
+        date or datetime.now().strftime("%d.%m.%Y"),
+        date_font,
+        fill,
+    )
+    draw_centered(draw, PRICE_HEADING["title_y"], template["title"], title_font, fill)
 
 
 def save_png(image):
@@ -224,12 +253,9 @@ def build_diamant_image(price_ranges, template, phone=None, date=None):
         logo = logo.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
         image.paste(logo, ((CANVAS_WIDTH - logo_w) // 2, 108), logo)
 
-    date_font = load_font(34, bold=True, family="evolventa")
-    title_font = fit_font(draw, template["title"], CANVAS_WIDTH - 170, 42, 32, bold=True, family="evolventa")
     phone_font = fit_font(draw, phone or template["phone"], CANVAS_WIDTH - 220, 57, 42, bold=True, family="evolventa")
 
-    draw_centered(draw, 260, date or datetime.now().strftime("%d.%m.%Y"), date_font, text)
-    draw_centered(draw, 312, template["title"], title_font, text)
+    draw_price_heading(draw, template, text, date=date)
     draw_price_table(draw, price_ranges, text)
     draw_centered(draw, CANVAS_HEIGHT - 150, phone or template["phone"], phone_font, text)
     return save_png(image)
@@ -248,13 +274,10 @@ def build_tillachi_image(price_ranges, template, phone=None, date=None):
         image.paste(corner.rotate(180), (CANVAS_WIDTH - 105, CANVAS_HEIGHT - 105), corner.rotate(180))
 
     brand_font = load_font(64, bold=True, family="evolventa")
-    date_font = load_font(42, bold=True, family="evolventa")
-    title_font = fit_font(draw, template["title"], CANVAS_WIDTH - 170, 43, 34, bold=True, family="evolventa")
     phone_font = fit_font(draw, phone or template["phone"], CANVAS_WIDTH - 220, 57, 42, bold=True, family="evolventa")
 
     draw_centered(draw, 165, template["brand"], brand_font, accent)
-    draw_centered(draw, 282, date or datetime.now().strftime("%d.%m.%Y"), date_font, accent)
-    draw_centered(draw, 340, template["title"], title_font, accent)
+    draw_price_heading(draw, template, accent, date=date)
     draw_price_table(draw, price_ranges, template["text"])
     draw_centered(draw, CANVAS_HEIGHT - 150, phone or template["phone"], phone_font, accent)
     return save_png(image)
@@ -284,12 +307,9 @@ def build_goldexpert_image(price_ranges, template, phone=None, date=None):
     brand_y = logo_y + (logo.height - (brand_bbox[3] - brand_bbox[1])) / 2 - brand_bbox[1]
     draw.text((270, brand_y), template["brand"], font=brand_font, fill=accent)
 
-    date_font = load_font(42, bold=True, family="evolventa")
-    title_font = fit_font(draw, template["title"], CANVAS_WIDTH - 170, 43, 34, bold=True, family="evolventa")
     phone_font = fit_font(draw, phone or template["phone"], CANVAS_WIDTH - 220, 57, 42, bold=True, family="evolventa")
 
-    draw_centered(draw, 282, date or datetime.now().strftime("%d.%m.%Y"), date_font, accent)
-    draw_centered(draw, 340, template["title"], title_font, accent)
+    draw_price_heading(draw, template, accent, date=date)
     draw_price_table(draw, price_ranges, template["text"])
     draw_centered(draw, CANVAS_HEIGHT - 150, phone or template["phone"], phone_font, accent)
     return save_png(image)
@@ -323,13 +343,10 @@ def build_skupka_image(price_ranges, template, phone=None, date=None):
     )
 
     brand_font = fit_font(draw, template["brand"], CANVAS_WIDTH - 160, 67, 48, bold=False, family="evolventa")
-    title_font = fit_font(draw, template["title"], CANVAS_WIDTH - 220, 43, 34, bold=True, family="evolventa")
-    date_font = load_font(39, bold=True, family="evolventa")
     phone_font = fit_font(draw, phone or template["phone"], CANVAS_WIDTH - 260, 58, 42, bold=True, family="evolventa")
 
     draw_centered(draw, 150, template["brand"], brand_font, text)
-    draw_centered(draw, 275, template["title"], title_font, text)
-    draw_centered(draw, 330, date or datetime.now().strftime("%d.%m.%Y"), date_font, text)
+    draw_price_heading(draw, template, text, date=date)
     draw_price_table(draw, price_ranges, text)
     draw_centered(draw, CANVAS_HEIGHT - 150, phone or template["phone"], phone_font, text)
     return save_png(image)
