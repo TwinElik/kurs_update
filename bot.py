@@ -335,6 +335,12 @@ async def handle_text(message: Message):
             reply_markup=main_keyboard(),
         )
         return
+    if main_rate > 9999:
+        await message.answer(
+            "Курс не должен быть больше 9999. Введите другое значение.",
+            reply_markup=main_keyboard(),
+        )
+        return
 
     USER_WAITING_RATE.discard(message.from_user.id)
     await generate_all_images(message, main_rate)
