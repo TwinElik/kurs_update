@@ -262,7 +262,7 @@ async def generate_all_images(message, main_rate):
     ranges = generate_price_range(main_rate)
     rows = price_rows(main_rate)
 
-    progress = await message.answer("Генерация фото: 0/4", reply_markup=main_keyboard())
+    progress = await message.answer("Генерация фото: 0/4")
 
     images = []
     total = len(ORG_ORDER)
