@@ -35,7 +35,7 @@ PHONE = os.getenv("PHONE", "").strip()
 
 dp = Dispatcher()
 
-GENERATE_BUTTON = "🧮 Ввести начальную цену"
+GENERATE_BUTTON = "🧮 Изменить курс"
 SHOW_BUTTON = "🖼 Показать 4 фото"
 
 ORG_ORDER = ("diamant", "tillachi", "goldexpert", "skupka")
