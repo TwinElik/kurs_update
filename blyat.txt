@@ -1,26 +1,3 @@
-(.venv) ubuntu@ubuntu:~/Documents/kurs_update$ python bot.py 
-Traceback (most recent call last):
-  File "/home/ubuntu/Documents/kurs_update/bot.py", line 349, in <module>
-    asyncio.run(main())
-  File "/usr/lib/python3.10/asyncio/runners.py", line 44, in run
-    return loop.run_until_complete(main)
-  File "/usr/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
-    return future.result()
-  File "/home/ubuntu/Documents/kurs_update/bot.py", line 342, in main
-    await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/bot.py", line 3488, in set_chat_menu_button
-    return await self(call, request_timeout=request_timeout)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/bot.py", line 488, in __call__
-    return await self.session(self, method, timeout=request_timeout)
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/session/base.py", line 254, in __call__
-    return cast(TelegramType, await middleware(bot, method))
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/session/aiohttp.py", line 189, in make_request
-    response = self.check_response(
-  File "/home/ubuntu/Documents/kurs_update/.venv/lib/python3.10/site-packages/aiogram/client/session/base.py", line 126, in check_response
-    raise TelegramUnauthorizedError(method=method, message=description)
-aiogram.exceptions.TelegramUnauthorizedError: Telegram server says - Unauthorized
-Unclosed client session
-client_session: <aiohttp.client.ClientSession object at 0x7fab17ed5900>
-Unclosed connector
-connections: ['[(<aiohttp.client_proto.ResponseHandler object at 0x7fab17ec3b20>, 526399.658113131)]']
-connector: <aiohttp.connector.TCPConnector object at 0x7fab17ed5750>
+BOT_TOKEN=8863788481:AAG8IJMzeY-Z4PAUShEVzqlzp62Q8UAUauI
+PHONE=
+DEFAULT_ORG=goldexpert
