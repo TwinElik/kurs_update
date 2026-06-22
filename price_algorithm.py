@@ -18,7 +18,7 @@ def excel_ceiling(value, significance):
 def _start_price(probe, main_rate):
     rate = Decimal(str(main_rate))
     if probe == 585:
-        coefficient = excel_round(Decimal(585) / Decimal(583), 5)
+        coefficient = excel_round(Decimal(585) / Decimal(583), 2)
         return int((coefficient * rate * Decimal(1000)).to_integral_value(rounding=ROUND_HALF_UP))
     base = (Decimal(probe) / Decimal(583) / Decimal(10)) * rate
     return int(excel_ceiling(base, Decimal("0.5")) * Decimal(10000))

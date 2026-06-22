@@ -15,7 +15,7 @@ function roundedBasePrice(probe, mainRate) {
 
 function minPrice(probe, mainRate) {
   if (probe === 585) {
-    return Math.round(excelRound(585 / 583, 5) * mainRate * 1000);
+    return Math.round(excelRound(585 / 583, 2) * mainRate * 1000);
   }
   return roundedBasePrice(probe, mainRate);
 }

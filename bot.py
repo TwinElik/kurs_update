@@ -321,6 +321,13 @@ async def show_last_images(message: Message):
 
 @dp.message(F.text)
 async def handle_text(message: Message):
+    if message.from_user.id not in USER_WAITING_RATE:
+        await message.answer(
+            "Чтобы изменить курс, сначала нажмите «Ввести начальную цену».",
+            reply_markup=main_keyboard(),
+        )
+        return
+
     main_rate = parse_main_rate(message.text)
     if main_rate is None or main_rate <= 0:
         await message.answer(
