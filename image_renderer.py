@@ -18,57 +18,84 @@ TILLACHI_CORNER_PATH = ASSETS / "tillachi_corner_source.png"
 GOLDEXPERT_LOGO_PATH = ASSETS / "goldexpert_logo.webp"
 SKUPKA_LOGO_PATH = ASSETS / "skupka_logo.webp"
 
+CANVAS_WIDTH = 904
+CANVAS_HEIGHT = 1280
+TITLE_TEXT = "\u0426\u0415\u041D\u0410 \u0417\u0410 1 \u0413\u0420\u0410\u041C\u041C \u0417\u041E\u041B\u041E\u0422\u0410"
+
+PRICE_TABLE = {
+    "left_x": 86,
+    "right_edge": 818,
+    "start_y": 430,
+    "row_h": 76,
+    "sample_size": 42,
+    "price_size": 42,
+    "price_min_size": 30,
+    "price_max_width": 458,
+}
+
 ORG_TEMPLATES = {
     "diamant": {
         "style": "diamant",
-        "title": "ЦЕНА ЗА 1 ГРАММ ЗОЛОТА",
+        "title": TITLE_TEXT,
         "logo": LOGO_PATH,
-        "red": "#d52b24",
+        "accent": "#d52b24",
+        "background": "#ffffff",
+        "text": "#050505",
         "phone": "+998 55 055 00 02",
     },
     "org2": {
         "style": "diamant",
-        "title": "ЦЕНА ЗА 1 ГРАММ ЗОЛОТА",
+        "title": TITLE_TEXT,
         "logo": LOGO_PATH,
-        "red": "#d52b24",
+        "accent": "#d52b24",
+        "background": "#ffffff",
+        "text": "#050505",
         "phone": "+998 55 055 00 02",
     },
     "org3": {
         "style": "diamant",
-        "title": "ЦЕНА ЗА 1 ГРАММ ЗОЛОТА",
+        "title": TITLE_TEXT,
         "logo": LOGO_PATH,
-        "red": "#d52b24",
+        "accent": "#d52b24",
+        "background": "#ffffff",
+        "text": "#050505",
         "phone": "+998 55 055 00 02",
     },
     "org4": {
         "style": "diamant",
-        "title": "ЦЕНА ЗА 1 ГРАММ ЗОЛОТА",
+        "title": TITLE_TEXT,
         "logo": LOGO_PATH,
-        "red": "#d52b24",
+        "accent": "#d52b24",
+        "background": "#ffffff",
+        "text": "#050505",
         "phone": "+998 55 055 00 02",
     },
     "tillachi": {
-        "style": "black_gold",
+        "style": "tillachi",
         "brand": "Tillachi bolla",
-        "title": "ЦЕНА ЗА 1 ГРАММ ЗОЛОТА",
-        "yellow": "#ffcc00",
+        "title": TITLE_TEXT,
+        "accent": "#ffcc00",
+        "background": "#000000",
+        "text": "#ffcc00",
         "phone": "+998 50 590 14 50",
     },
     "goldexpert": {
         "style": "goldexpert",
         "brand": "GOLDEXPERT.UZ",
-        "title": "\u0426\u0415\u041d\u0410 \u0417\u0410 1 \u0413\u0420\u0410\u041c\u041c \u0417\u041e\u041B\u041E\u0422\u0410",
-        "orange": "#ffa30a",
+        "title": TITLE_TEXT,
+        "accent": "#ffa30a",
         "background": "#000014",
+        "text": "#ffa30a",
         "logo": GOLDEXPERT_LOGO_PATH,
         "phone": "+998 55 055 20 00",
     },
     "skupka": {
         "style": "skupka",
         "brand": "SKUPKA-ZOLOTA.UZ",
-        "title": "\u0426\u0415\u041d\u0410 \u0417\u0410 1 \u0413\u0420\u0410\u041c\u041c \u0417\u041e\u041B\u041E\u0422\u0410",
-        "gold": "#f7ca39",
+        "title": TITLE_TEXT,
+        "accent": "#f7ca39",
         "background": "#000000",
+        "text": "#ffffff",
         "logo": SKUPKA_LOGO_PATH,
         "phone": "+998 90 714 90 90",
     },
@@ -94,92 +121,53 @@ def fit_font(draw, text, max_width, start_size, min_size=20, bold=False, family=
     return load_font(min_size, bold=bold, family=family)
 
 
-def build_price_image(price_ranges, org="diamant", phone=None, date=None):
-    template = ORG_TEMPLATES.get(org, ORG_TEMPLATES["diamant"])
-    if template.get("style") == "black_gold":
-        return build_black_gold_image(price_ranges, template, phone=phone, date=date)
-    if template.get("style") == "goldexpert":
-        return build_goldexpert_image(price_ranges, template, phone=phone, date=date)
-    if template.get("style") == "skupka":
-        return build_skupka_image(price_ranges, template, phone=phone, date=date)
+def draw_centered(draw, y, text, font, fill, width=CANVAS_WIDTH):
+    text_w = draw.textlength(text, font=font)
+    draw.text(((width - text_w) / 2, y), text, font=font, fill=fill)
 
-    width = 904
-    height = 1280
-    red = template["red"]
-    dark = "#050505"
-    white = "#ffffff"
 
-    image = Image.new("RGB", (width, height), white)
-    draw = ImageDraw.Draw(image)
+def draw_price_table(draw, price_ranges, fill):
+    sample_font = load_font(PRICE_TABLE["sample_size"], bold=True, family="evolventa")
+    price_texts = {
+        probe: f"{format_price(min_price)}-{format_price(max_price)} \u0421\u0423\u041C"
+        for probe, (min_price, max_price) in price_ranges.items()
+    }
+    longest_price = max(price_texts.values(), key=len) if price_texts else ""
+    price_font = fit_font(
+        draw,
+        longest_price,
+        PRICE_TABLE["price_max_width"],
+        start_size=PRICE_TABLE["price_size"],
+        min_size=PRICE_TABLE["price_min_size"],
+        bold=True,
+        family="evolventa",
+    )
+    y = PRICE_TABLE["start_y"]
+    for probe in price_ranges:
+        sample_text = f"{probe} \u041F\u0420\u041E\u0411\u0410"
+        price_text = price_texts[probe]
+        price_w = draw.textlength(price_text, font=price_font)
+        draw.text((PRICE_TABLE["left_x"], y), sample_text, font=sample_font, fill=fill)
+        draw.text((PRICE_TABLE["right_edge"] - price_w, y), price_text, font=price_font, fill=fill)
+        y += PRICE_TABLE["row_h"]
 
-    frame_x = 70
-    top_line = 70
-    bottom_line = height - 72
-    draw.line((frame_x, 0, frame_x, height), fill=red, width=5)
-    draw.line((width - frame_x, 0, width - frame_x, height), fill=red, width=5)
-    draw.line((0, top_line, width, top_line), fill=red, width=5)
-    draw.line((0, bottom_line, width, bottom_line), fill=red, width=5)
 
-    logo_path = template["logo"]
-    if logo_path.exists():
-        logo = Image.open(logo_path).convert("RGBA")
-        logo_w = 640
-        logo_h = int(logo.height * (logo_w / logo.width))
-        logo = logo.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
-        image.paste(logo, ((width - logo_w) // 2, 108), logo)
-
-    date_font = load_font(34, bold=True)
-    title_font = load_font(36, bold=True)
-    sample_font = load_font(36, bold=True)
-    phone_font = load_font(46, bold=True)
-
-    date_text = date or datetime.now().strftime("%d.%m.%Y")
-    date_w = draw.textlength(date_text, font=date_font)
-    draw.text(((width - date_w) / 2, 260), date_text, font=date_font, fill=dark)
-
-    title = template["title"]
-    title_w = draw.textlength(title, font=title_font)
-    draw.text(((width - title_w) / 2, 312), title, font=title_font, fill=dark)
-
-    left_x = 94
-    right_x = 424
-    y = 415
-    row_h = 72
-    for probe, (min_price, max_price) in price_ranges.items():
-        sample_text = f"{probe} ПРОБА"
-        price_text = f"{format_price(min_price)}-{format_price(max_price)} СУМ"
-        price_font = fit_font(draw, price_text, width - right_x - 85, start_size=32, min_size=24, bold=True)
-        draw.text((left_x, y), sample_text, font=sample_font, fill=dark)
-        draw.text((right_x, y + 3), price_text, font=price_font, fill=dark)
-        y += row_h
-
-    phone_text = phone or template["phone"]
-    phone_w = draw.textlength(phone_text, font=phone_font)
-    draw.text(((width - phone_w) / 2, height - 150), phone_text, font=phone_font, fill=dark)
-
+def save_png(image):
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     output.seek(0)
     return output.getvalue()
 
 
-def transparent_corner_image(size):
-    corner = Image.open(TILLACHI_CORNER_PATH).convert("RGBA")
-    corner = corner.resize((size, size), Image.Resampling.LANCZOS)
-    pixels = corner.load()
-    for y in range(corner.height):
-        for x in range(corner.width):
+def transparent_black_to_alpha(image, threshold=20):
+    image = image.convert("RGBA")
+    pixels = image.load()
+    for y in range(image.height):
+        for x in range(image.width):
             r, g, b, a = pixels[x, y]
-            if r < 18 and g < 18 and b < 18:
+            if a == 0 or (r < threshold and g < threshold and b < threshold):
                 pixels[x, y] = (0, 0, 0, 0)
-            else:
-                pixels[x, y] = (r, g, b, a)
-    return corner
-
-
-def paste_corner(base, corner, position, rotation=0):
-    image = corner.rotate(rotation, expand=False)
-    base.paste(image, position, image)
+    return image
 
 
 def recolored_logo(path, size, color):
@@ -200,293 +188,148 @@ def recolored_logo(path, size, color):
     return recolored
 
 
-def draw_centered(draw, y, text, font, fill, width):
-    text_w = draw.textlength(text, font=font)
-    draw.text(((width - text_w) / 2, y), text, font=font, fill=fill)
+def build_price_image(price_ranges, org="diamant", phone=None, date=None):
+    template = ORG_TEMPLATES.get(org, ORG_TEMPLATES["diamant"])
+    style = template.get("style")
+    if style == "diamant":
+        return build_diamant_image(price_ranges, template, phone=phone, date=date)
+    if style == "tillachi":
+        return build_tillachi_image(price_ranges, template, phone=phone, date=date)
+    if style == "goldexpert":
+        return build_goldexpert_image(price_ranges, template, phone=phone, date=date)
+    if style == "skupka":
+        return build_skupka_image(price_ranges, template, phone=phone, date=date)
+    return build_diamant_image(price_ranges, ORG_TEMPLATES["diamant"], phone=phone, date=date)
+
+
+def build_diamant_image(price_ranges, template, phone=None, date=None):
+    image = Image.new("RGB", (CANVAS_WIDTH, CANVAS_HEIGHT), template["background"])
+    draw = ImageDraw.Draw(image)
+    accent = template["accent"]
+    text = template["text"]
+
+    frame_x = 70
+    top_line = 70
+    bottom_line = CANVAS_HEIGHT - 72
+    draw.line((frame_x, 0, frame_x, CANVAS_HEIGHT), fill=accent, width=5)
+    draw.line((CANVAS_WIDTH - frame_x, 0, CANVAS_WIDTH - frame_x, CANVAS_HEIGHT), fill=accent, width=5)
+    draw.line((0, top_line, CANVAS_WIDTH, top_line), fill=accent, width=5)
+    draw.line((0, bottom_line, CANVAS_WIDTH, bottom_line), fill=accent, width=5)
+
+    logo_path = template["logo"]
+    if logo_path.exists():
+        logo = Image.open(logo_path).convert("RGBA")
+        logo_w = 640
+        logo_h = int(logo.height * (logo_w / logo.width))
+        logo = logo.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
+        image.paste(logo, ((CANVAS_WIDTH - logo_w) // 2, 108), logo)
+
+    date_font = load_font(34, bold=True, family="evolventa")
+    title_font = fit_font(draw, template["title"], CANVAS_WIDTH - 170, 42, 32, bold=True, family="evolventa")
+    phone_font = fit_font(draw, phone or template["phone"], CANVAS_WIDTH - 220, 57, 42, bold=True, family="evolventa")
+
+    draw_centered(draw, 260, date or datetime.now().strftime("%d.%m.%Y"), date_font, text)
+    draw_centered(draw, 312, template["title"], title_font, text)
+    draw_price_table(draw, price_ranges, text)
+    draw_centered(draw, CANVAS_HEIGHT - 150, phone or template["phone"], phone_font, text)
+    return save_png(image)
+
+
+def build_tillachi_image(price_ranges, template, phone=None, date=None):
+    image = Image.new("RGB", (CANVAS_WIDTH, CANVAS_HEIGHT), template["background"])
+    draw = ImageDraw.Draw(image)
+    accent = template["accent"]
+
+    if TILLACHI_CORNER_PATH.exists():
+        corner = transparent_black_to_alpha(Image.open(TILLACHI_CORNER_PATH).resize((105, 105), Image.Resampling.LANCZOS))
+        image.paste(corner, (0, 0), corner)
+        image.paste(corner.rotate(90), (CANVAS_WIDTH - 105, 0), corner.rotate(90))
+        image.paste(corner.rotate(270), (0, CANVAS_HEIGHT - 105), corner.rotate(270))
+        image.paste(corner.rotate(180), (CANVAS_WIDTH - 105, CANVAS_HEIGHT - 105), corner.rotate(180))
+
+    brand_font = load_font(64, bold=True, family="evolventa")
+    date_font = load_font(42, bold=True, family="evolventa")
+    title_font = fit_font(draw, template["title"], CANVAS_WIDTH - 170, 43, 34, bold=True, family="evolventa")
+    phone_font = fit_font(draw, phone or template["phone"], CANVAS_WIDTH - 220, 57, 42, bold=True, family="evolventa")
+
+    draw_centered(draw, 165, template["brand"], brand_font, accent)
+    draw_centered(draw, 282, date or datetime.now().strftime("%d.%m.%Y"), date_font, accent)
+    draw_centered(draw, 340, template["title"], title_font, accent)
+    draw_price_table(draw, price_ranges, template["text"])
+    draw_centered(draw, CANVAS_HEIGHT - 150, phone or template["phone"], phone_font, accent)
+    return save_png(image)
 
 
 def build_goldexpert_image(price_ranges, template, phone=None, date=None):
-    width = 904
-    height = 1280
-    orange = template["orange"]
-    background = template["background"]
-
-    image = Image.new("RGB", (width, height), background)
+    image = Image.new("RGB", (CANVAS_WIDTH, CANVAS_HEIGHT), template["background"])
     draw = ImageDraw.Draw(image)
+    accent = template["accent"]
 
     radius = 88
-    for cx, cy in ((0, 0), (width, 0), (0, height), (width, height)):
-        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=orange)
+    for cx, cy in ((0, 0), (CANVAS_WIDTH, 0), (0, CANVAS_HEIGHT), (CANVAS_WIDTH, CANVAS_HEIGHT)):
+        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=accent)
 
-    line_w = 4
-    draw.line((90, 70, width - 90, 70), fill=orange, width=line_w)
-    draw.line((90, height - 70, width - 90, height - 70), fill=orange, width=line_w)
-    draw.line((70, 92, 70, height - 92), fill=orange, width=line_w)
-    draw.line((width - 70, 92, width - 70, height - 92), fill=orange, width=line_w)
+    draw.line((90, 70, CANVAS_WIDTH - 90, 70), fill=accent, width=4)
+    draw.line((90, CANVAS_HEIGHT - 70, CANVAS_WIDTH - 90, CANVAS_HEIGHT - 70), fill=accent, width=4)
+    draw.line((70, 92, 70, CANVAS_HEIGHT - 92), fill=accent, width=4)
+    draw.line((CANVAS_WIDTH - 70, 92, CANVAS_WIDTH - 70, CANVAS_HEIGHT - 92), fill=accent, width=4)
 
-    logo_size = 150
-    logo = recolored_logo(template["logo"], logo_size, orange)
+    logo = recolored_logo(template["logo"], 150, accent)
     logo_x = 100
     logo_y = 108
     image.paste(logo, (logo_x, logo_y), logo)
 
-    brand_font = fit_font(
-        draw,
-        template["brand"],
-        width - 290,
-        start_size=63,
-        min_size=48,
-        bold=True,
-        family="evolventa",
-    )
+    brand_font = fit_font(draw, template["brand"], CANVAS_WIDTH - 290, 63, 48, bold=True, family="evolventa")
     brand_bbox = draw.textbbox((0, 0), template["brand"], font=brand_font)
-    brand_h = brand_bbox[3] - brand_bbox[1]
-    brand_y = logo_y + (logo.height - brand_h) / 2 - brand_bbox[1]
-    draw.text((270, brand_y), template["brand"], font=brand_font, fill=orange)
+    brand_y = logo_y + (logo.height - (brand_bbox[3] - brand_bbox[1])) / 2 - brand_bbox[1]
+    draw.text((270, brand_y), template["brand"], font=brand_font, fill=accent)
 
     date_font = load_font(42, bold=True, family="evolventa")
-    title_font = fit_font(
-        draw,
-        template["title"],
-        width - 170,
-        start_size=43,
-        min_size=34,
-        bold=True,
-        family="evolventa",
-    )
-    sample_font = load_font(42, bold=True, family="evolventa")
-    phone_text = phone or template["phone"]
-    phone_font = fit_font(
-        draw,
-        phone_text,
-        width - 220,
-        start_size=57,
-        min_size=42,
-        bold=True,
-        family="evolventa",
-    )
+    title_font = fit_font(draw, template["title"], CANVAS_WIDTH - 170, 43, 34, bold=True, family="evolventa")
+    phone_font = fit_font(draw, phone or template["phone"], CANVAS_WIDTH - 220, 57, 42, bold=True, family="evolventa")
 
-    date_text = date or datetime.now().strftime("%d.%m.%Y")
-    draw_centered(draw, 282, date_text, date_font, orange, width)
-    draw_centered(draw, 340, template["title"], title_font, orange, width)
-
-    left_x = 86
-    right_edge = width - 86
-    y = 430
-    row_h = 76
-    price_texts = {
-        probe: f"{format_price(min_price)}-{format_price(max_price)}  \u0421\u0423\u041c"
-        for probe, (min_price, max_price) in price_ranges.items()
-    }
-    longest_price = max(price_texts.values(), key=len) if price_texts else ""
-    price_font = fit_font(
-        draw,
-        longest_price,
-        right_edge - 360,
-        start_size=42,
-        min_size=30,
-        bold=True,
-        family="evolventa",
-    )
-    for probe in price_ranges:
-        sample_text = f"{probe} \u041f\u0420\u041e\u0411\u0410"
-        price_text = price_texts[probe]
-        price_w = draw.textlength(price_text, font=price_font)
-        draw.text((left_x, y), sample_text, font=sample_font, fill=orange)
-        draw.text((right_edge - price_w, y), price_text, font=price_font, fill=orange)
-        y += row_h
-
-    draw_centered(draw, height - 150, phone_text, phone_font, orange, width)
-
-    output = BytesIO()
-    image.save(output, format="PNG", optimize=True)
-    output.seek(0)
-    return output.getvalue()
+    draw_centered(draw, 282, date or datetime.now().strftime("%d.%m.%Y"), date_font, accent)
+    draw_centered(draw, 340, template["title"], title_font, accent)
+    draw_price_table(draw, price_ranges, template["text"])
+    draw_centered(draw, CANVAS_HEIGHT - 150, phone or template["phone"], phone_font, accent)
+    return save_png(image)
 
 
 def lion_logo(path, size):
-    logo = Image.open(path).convert("RGBA")
-    logo = logo.resize((size, size), Image.Resampling.LANCZOS)
-    pixels = logo.load()
-    for y in range(logo.height):
-        for x in range(logo.width):
-            r, g, b, a = pixels[x, y]
-            if a == 0 or (r < 20 and g < 20 and b < 20):
-                pixels[x, y] = (0, 0, 0, 0)
-            else:
-                pixels[x, y] = (r, g, b, a)
-    return logo
-
-
-def paste_lion_corner(base, logo, position, mirror=False):
-    image = logo.transpose(Image.Transpose.FLIP_LEFT_RIGHT) if mirror else logo
-    base.paste(image, position, image)
+    logo = Image.open(path).convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+    return transparent_black_to_alpha(logo)
 
 
 def build_skupka_image(price_ranges, template, phone=None, date=None):
-    width = 904
-    height = 1280
-    gold = template["gold"]
-    white = "#ffffff"
-    black = template["background"]
-
-    image = Image.new("RGB", (width, height), black)
+    image = Image.new("RGB", (CANVAS_WIDTH, CANVAS_HEIGHT), template["background"])
     draw = ImageDraw.Draw(image)
+    accent = template["accent"]
+    text = template["text"]
 
-    line_w = 5
-    left_x = 70
-    right_x = width - 70
-    top_line_y = 60
-    inner_top_y = 122
-    bottom_line_y = height - 60
-    inner_bottom_y = height - 122
-    draw.line((138, top_line_y, width - 138, top_line_y), fill=gold, width=line_w)
-    draw.line((138, bottom_line_y, width - 138, bottom_line_y), fill=gold, width=line_w)
-    draw.line((left_x, inner_top_y, left_x, inner_bottom_y), fill=gold, width=line_w)
-    draw.line((right_x, inner_top_y, right_x, inner_bottom_y), fill=gold, width=line_w)
+    draw.line((138, 60, CANVAS_WIDTH - 138, 60), fill=accent, width=5)
+    draw.line((138, CANVAS_HEIGHT - 60, CANVAS_WIDTH - 138, CANVAS_HEIGHT - 60), fill=accent, width=5)
+    draw.line((70, 122, 70, CANVAS_HEIGHT - 122), fill=accent, width=5)
+    draw.line((CANVAS_WIDTH - 70, 122, CANVAS_WIDTH - 70, CANVAS_HEIGHT - 122), fill=accent, width=5)
 
     lion_size = 140
     lion = lion_logo(template["logo"], lion_size)
-    paste_lion_corner(image, lion, (0, 0), mirror=False)
-    paste_lion_corner(image, lion, (width - lion_size, 0), mirror=True)
-    paste_lion_corner(image, lion, (0, height - lion_size), mirror=False)
-    paste_lion_corner(image, lion, (width - lion_size, height - lion_size), mirror=True)
+    image.paste(lion, (0, 0), lion)
+    image.paste(lion.transpose(Image.Transpose.FLIP_LEFT_RIGHT), (CANVAS_WIDTH - lion_size, 0), lion.transpose(Image.Transpose.FLIP_LEFT_RIGHT))
+    image.paste(lion, (0, CANVAS_HEIGHT - lion_size), lion)
+    image.paste(
+        lion.transpose(Image.Transpose.FLIP_LEFT_RIGHT),
+        (CANVAS_WIDTH - lion_size, CANVAS_HEIGHT - lion_size),
+        lion.transpose(Image.Transpose.FLIP_LEFT_RIGHT),
+    )
 
-    brand_font = fit_font(
-        draw,
-        template["brand"],
-        width - 160,
-        start_size=67,
-        min_size=48,
-        bold=False,
-        family="evolventa",
-    )
-    title_font = fit_font(
-        draw,
-        template["title"],
-        width - 220,
-        start_size=43,
-        min_size=34,
-        bold=True,
-        family="evolventa",
-    )
+    brand_font = fit_font(draw, template["brand"], CANVAS_WIDTH - 160, 67, 48, bold=False, family="evolventa")
+    title_font = fit_font(draw, template["title"], CANVAS_WIDTH - 220, 43, 34, bold=True, family="evolventa")
     date_font = load_font(39, bold=True, family="evolventa")
-    sample_font = load_font(43, bold=True, family="evolventa")
-    phone_text = phone or template["phone"]
-    phone_font = fit_font(
-        draw,
-        phone_text,
-        width - 260,
-        start_size=58,
-        min_size=42,
-        bold=True,
-        family="evolventa",
-    )
+    phone_font = fit_font(draw, phone or template["phone"], CANVAS_WIDTH - 260, 58, 42, bold=True, family="evolventa")
 
-    draw_centered(draw, 150, template["brand"], brand_font, white, width)
-    draw_centered(draw, 275, template["title"], title_font, white, width)
-    date_text = date or datetime.now().strftime("%d.%m.%Y")
-    draw_centered(draw, 330, date_text, date_font, white, width)
-
-    sample_x = 92
-    right_edge = width - 85
-    y = 410
-    row_h = 74
-    price_texts = {
-        probe: f"{format_price(min_price)}-{format_price(max_price)}\u0421\u0423\u041c"
-        for probe, (min_price, max_price) in price_ranges.items()
-    }
-    longest_price = max(price_texts.values(), key=len) if price_texts else ""
-    price_font = fit_font(
-        draw,
-        longest_price,
-        right_edge - 380,
-        start_size=43,
-        min_size=29,
-        bold=True,
-        family="evolventa",
-    )
-    for probe in price_ranges:
-        sample_text = f"{probe} \u041f\u0420\u041e\u0411\u0410"
-        price_text = price_texts[probe]
-        price_w = draw.textlength(price_text, font=price_font)
-        draw.text((sample_x, y), sample_text, font=sample_font, fill=white)
-        draw.text((right_edge - price_w, y), price_text, font=price_font, fill=white)
-        y += row_h
-
-    draw_centered(draw, height - 150, phone_text, phone_font, white, width)
-
-    output = BytesIO()
-    image.save(output, format="PNG", optimize=True)
-    output.seek(0)
-    return output.getvalue()
-
-
-def build_black_gold_image(price_ranges, template, phone=None, date=None):
-    width = 904
-    height = 1280
-    yellow = template["yellow"]
-    black = "#000000"
-
-    image = Image.new("RGB", (width, height), black)
-    draw = ImageDraw.Draw(image)
-
-    corner_size = 105
-    corner = transparent_corner_image(corner_size)
-    paste_corner(image, corner, (0, 0), 0)
-    paste_corner(image, corner, (width - corner_size, 0), 90)
-    paste_corner(image, corner, (0, height - corner_size), 270)
-    paste_corner(image, corner, (width - corner_size, height - corner_size), 180)
-
-    brand_font = load_font(64, bold=True, family="evolventa")
-    date_font = load_font(45, bold=True, family="evolventa")
-    title_font = load_font(45, bold=True, family="evolventa")
-    sample_font = load_font(45, bold=True, family="evolventa")
-    phone_font = load_font(57, bold=True, family="evolventa")
-
-    brand = template["brand"]
-    brand_w = draw.textlength(brand, font=brand_font)
-    draw.text(((width - brand_w) / 2, 165), brand, font=brand_font, fill=yellow)
-
-    date_text = date or datetime.now().strftime("%d.%m.%Y")
-    date_w = draw.textlength(date_text, font=date_font)
-    draw.text(((width - date_w) / 2, 282), date_text, font=date_font, fill=yellow)
-
-    title = template["title"]
-    title_w = draw.textlength(title, font=title_font)
-    draw.text(((width - title_w) / 2, 340), title, font=title_font, fill=yellow)
-
-    left_x = 86
-    right_edge = width - 86
-    y = 430
-    row_h = 76
-    price_texts = {
-        probe: f"{format_price(min_price)}-{format_price(max_price)}  СУМ"
-        for probe, (min_price, max_price) in price_ranges.items()
-    }
-    longest_price = max(price_texts.values(), key=len) if price_texts else ""
-    price_font = fit_font(
-        draw,
-        longest_price,
-        right_edge - 360,
-        start_size=45,
-        min_size=27,
-        bold=True,
-        family="evolventa",
-    )
-    for probe, (min_price, max_price) in price_ranges.items():
-        sample_text = f"{probe} ПРОБА"
-        price_text = price_texts[probe]
-        price_w = draw.textlength(price_text, font=price_font)
-        draw.text((left_x, y), sample_text, font=sample_font, fill=yellow)
-        draw.text((right_edge - price_w, y), price_text, font=price_font, fill=yellow)
-        y += row_h
-
-    phone_text = phone or template["phone"]
-    phone_w = draw.textlength(phone_text, font=phone_font)
-    draw.text(((width - phone_w) / 2, height - 150), phone_text, font=phone_font, fill=yellow)
-
-    output = BytesIO()
-    image.save(output, format="PNG", optimize=True)
-    output.seek(0)
-    return output.getvalue()
+    draw_centered(draw, 150, template["brand"], brand_font, text)
+    draw_centered(draw, 275, template["title"], title_font, text)
+    draw_centered(draw, 330, date or datetime.now().strftime("%d.%m.%Y"), date_font, text)
+    draw_price_table(draw, price_ranges, text)
+    draw_centered(draw, CANVAS_HEIGHT - 150, phone or template["phone"], phone_font, text)
+    return save_png(image)
