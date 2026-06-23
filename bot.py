@@ -192,6 +192,14 @@ def get_latest_generation():
     return {"id": row[0], "main_rate": row[1], "created_at": row[2], "rows_json": row[3], "images": images}
 
 
+def is_generated_today(generation):
+    try:
+        created_at = datetime.fromisoformat(generation["created_at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return created_at.date() == datetime.now().date()
+
+
 def save_generation(main_rate, rows, images, created_by):
     created_at = datetime.now().isoformat(timespec="seconds")
     rows_json = json.dumps(rows, ensure_ascii=False)
@@ -249,7 +257,12 @@ async def generate_all_images(message, main_rate):
     rows = {org: price_rows(main_rate, org) for org in ORG_ORDER}
     rows_json = json.dumps(rows, ensure_ascii=False)
     latest = get_latest_generation()
-    if latest and latest["main_rate"] == str(main_rate) and latest["rows_json"] == rows_json:
+    if (
+        latest
+        and latest["main_rate"] == str(main_rate)
+        and latest["rows_json"] == rows_json
+        and is_generated_today(latest)
+    ):
         await message.answer(
             "Цена не изменилась. Готовые 4 фото уже сохранены.\n"
             "Нажмите «Показать 4 фото».",
