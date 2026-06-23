@@ -318,7 +318,7 @@ async def show_last_images(message: Message):
     latest = get_latest_generation()
     if not latest:
         await message.answer(
-            "Готовых фото пока нет. Сначала нажми «Ввести начальную цену».",
+            "Готовых фото пока нет. Сначала нажми «Изменить курс».",
             reply_markup=main_keyboard(),
         )
         return
@@ -332,7 +332,7 @@ async def show_last_images(message: Message):
 async def handle_text(message: Message):
     if message.from_user.id not in USER_WAITING_RATE:
         await message.answer(
-            "Чтобы изменить курс, сначала нажмите «Ввести начальную цену».",
+            "Чтобы изменить курс, сначала нажмите «Изменить курс».",
             reply_markup=main_keyboard(),
         )
         return
@@ -340,7 +340,7 @@ async def handle_text(message: Message):
     main_rate = parse_main_rate(message.text)
     if main_rate is None or main_rate <= 0:
         await message.answer(
-            "Нажми «Ввести начальную цену» и отправь число, например: 1200",
+            "Нажми «Изменить курс» и отправь число, например: 1200",
             reply_markup=main_keyboard(),
         )
         return
