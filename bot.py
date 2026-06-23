@@ -20,7 +20,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from dotenv import load_dotenv
 
 from image_renderer import ORG_TEMPLATES, build_price_image
-from price_algorithm import generate_price_range, price_rows
+from price_algorithm import calculate_prices, price_rows
 
 
 load_dotenv()
@@ -145,8 +145,8 @@ def org_title(org):
     return template.get("brand") or org.upper()
 
 
-def price_text(main_rate):
-    rows = price_rows(main_rate)
+def price_text(main_rate, brand="diamant"):
+    rows = price_rows(main_rate, brand)
     lines = [f"Главный курс: {main_rate}", ""]
     for probe, value in rows:
         lines.append(f"{probe}: {value}")
@@ -157,7 +157,7 @@ def get_latest_generation():
     with db_connect() as conn:
         row = conn.execute(
             """
-            SELECT id, main_rate, created_at
+            SELECT id, main_rate, created_at, rows_json
             FROM price_generations
             ORDER BY id DESC
             LIMIT 1
@@ -193,7 +193,7 @@ def get_latest_generation():
     if len(images) != len(ORG_ORDER):
         return None
 
-    return {"id": row[0], "main_rate": row[1], "created_at": row[2], "images": images}
+    return {"id": row[0], "main_rate": row[1], "created_at": row[2], "rows_json": row[3], "images": images}
 
 
 def save_generation(main_rate, rows, images, created_by):
@@ -237,7 +237,7 @@ def save_generation(main_rate, rows, images, created_by):
 def media_group_from_images(images, main_rate):
     media = []
     for index, item in enumerate(images):
-        caption = price_text(main_rate) if index == 0 else None
+        caption = price_text(main_rate, item["org"]) if index == 0 else None
         media.append(
             InputMediaPhoto(
                 media=BufferedInputFile(item["bytes"], filename=item["filename"]),
@@ -250,8 +250,10 @@ def media_group_from_images(images, main_rate):
 async def generate_all_images(message, main_rate):
     cleanup_old_generations()
 
+    rows = {org: price_rows(main_rate, org) for org in ORG_ORDER}
+    rows_json = json.dumps(rows, ensure_ascii=False)
     latest = get_latest_generation()
-    if latest and latest["main_rate"] == str(main_rate):
+    if latest and latest["main_rate"] == str(main_rate) and latest["rows_json"] == rows_json:
         await message.answer(
             "Цена не изменилась. Готовые 4 фото уже сохранены.\n"
             "Нажмите «Показать 4 фото».",
@@ -259,14 +261,12 @@ async def generate_all_images(message, main_rate):
         )
         return
 
-    ranges = generate_price_range(main_rate)
-    rows = price_rows(main_rate)
-
     progress = await message.answer("Генерация фото: 0/4")
 
     images = []
     total = len(ORG_ORDER)
     for index, org in enumerate(ORG_ORDER, start=1):
+        ranges = calculate_prices(main_rate, org)
         image = build_price_image(ranges, org=org, phone=PHONE or None)
         images.append(
             {
