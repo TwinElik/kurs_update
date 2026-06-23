@@ -146,11 +146,7 @@ def org_title(org):
 
 
 def price_text(main_rate, brand="diamant"):
-    rows = price_rows(main_rate, brand)
-    lines = [f"Главный курс: {main_rate}", ""]
-    for probe, value in rows:
-        lines.append(f"{probe}: {value}")
-    return "\n".join(lines)
+    return f"Основной курс: {main_rate}"
 
 
 def get_latest_generation():
