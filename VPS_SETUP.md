@@ -1,8 +1,8 @@
-# VPS setup
+# VPS setup for kurs bot
 
-Инструкция для запуска бота `kurs` на Ubuntu VPS с MySQL 5.7/8.0.
+This guide prepares the `kurs` Telegram bot on Ubuntu VPS with MySQL-compatible storage.
 
-## 1. Обновить проект
+## 1. Update project
 
 ```bash
 cd ~/Documents/kurs_update
@@ -12,13 +12,51 @@ pip install -r requirements.txt
 python -m py_compile bot.py image_renderer.py price_algorithm.py
 ```
 
-## 2. Создать базу MySQL
+## 2. Check MySQL service
+
+Check MySQL:
+
+```bash
+systemctl status mysql
+```
+
+If you see `Unit mysql.service could not be found`, check MariaDB:
+
+```bash
+systemctl status mariadb
+```
+
+If both services are missing, install MariaDB:
+
+```bash
+sudo apt update
+sudo apt install mariadb-server mariadb-client -y
+sudo systemctl enable mariadb
+sudo systemctl start mariadb
+sudo systemctl status mariadb
+```
+
+MariaDB works with `pymysql` and is compatible with the SQL used by this bot.
+
+If you specifically need MySQL package instead:
+
+```bash
+sudo apt update
+sudo apt install mysql-server -y
+sudo systemctl enable mysql
+sudo systemctl start mysql
+sudo systemctl status mysql
+```
+
+## 3. Create database and user
+
+Open MySQL/MariaDB shell:
 
 ```bash
 sudo mysql
 ```
 
-Внутри MySQL:
+Run:
 
 ```sql
 CREATE DATABASE IF NOT EXISTS kurs_update
@@ -35,13 +73,15 @@ FLUSH PRIVILEGES;
 EXIT;
 ```
 
-## 3. Настроить `.env`
+## 4. Configure `.env`
+
+Open `.env`:
 
 ```bash
 nano .env
 ```
 
-Добавить или заменить:
+Add or update:
 
 ```env
 DB_HOST=127.0.0.1
@@ -51,11 +91,11 @@ DB_PASSWORD=CHANGE_ME_STRONG_PASSWORD
 DB_NAME=kurs_update
 ```
 
-`BOT_TOKEN` тоже должен быть в `.env`.
+`BOT_TOKEN` must also exist in `.env`.
 
-## 4. Создать таблицы
+## 5. Initialize tables
 
-Бот сам создаёт таблицы при старте, но можно проверить вручную:
+The bot creates tables on startup, but you can initialize them manually:
 
 ```bash
 python - <<'PY'
@@ -65,13 +105,13 @@ print("tables initialized")
 PY
 ```
 
-Проверить список таблиц:
+Check tables:
 
 ```bash
 mysql -u kurs_user -p kurs_update -e "SHOW TABLES;"
 ```
 
-Должны быть:
+Expected tables:
 
 ```text
 diamant_gold_prices
@@ -82,32 +122,32 @@ skupka_gold_prices
 tillachi_gold_prices
 ```
 
-## 5. Перезапустить сервис
+## 6. Restart service
 
 ```bash
 sudo systemctl restart kurs
 sudo systemctl status kurs
 ```
 
-Логи:
+Follow logs:
 
 ```bash
 journalctl -u kurs -f
 ```
 
-## 6. Если бот запущен вручную
+## 7. If bot is running manually
 
-Если перед этим запускали:
+If you previously started the bot with:
 
 ```bash
 python bot.py
 ```
 
-то остановить через `Ctrl+C`, иначе Telegram может дать конфликт polling.
+stop it with `Ctrl+C`, otherwise Telegram can return polling conflict.
 
-## 7. Быстрая проверка записи
+## 8. Quick data check
 
-После генерации курса в боте проверить последнюю строку Diamant:
+After generating a rate in the bot, check the latest Diamant row:
 
 ```bash
 mysql -u kurs_user -p kurs_update -e "SELECT id, kurs, \`583_from\`, \`583_to\`, \`585_from\`, \`585_to\`, created_at FROM diamant_gold_prices ORDER BY id DESC LIMIT 1;"
