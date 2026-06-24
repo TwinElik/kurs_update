@@ -40,6 +40,12 @@ SHOW_BUTTON = "🖼 Показать 4 фото"
 
 ORG_ORDER = ("diamant", "tillachi", "goldexpert", "skupka")
 USER_WAITING_RATE = set()
+PRICE_TABLES = {
+    "diamant": "diamant_gold_prices",
+    "tillachi": "tillachi_gold_prices",
+    "goldexpert": "goldexpert_gold_prices",
+    "skupka": "skupka_gold_prices",
+}
 
 
 def main_keyboard():
@@ -57,6 +63,40 @@ def main_keyboard():
 def db_connect():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(DB_PATH)
+
+
+def sql_quote(name):
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def kurs_value(main_rate):
+    return int((Decimal(str(main_rate)) * Decimal(1000)).to_integral_value())
+
+
+def flat_price_columns():
+    columns = []
+    for sample in PROBES:
+        columns.extend((f"{sample}_from", f"{sample}_to"))
+    return columns
+
+
+def create_flat_price_table(conn, table_name):
+    price_columns_sql = ",\n                ".join(
+        f"{sql_quote(column)} INTEGER NOT NULL" for column in flat_price_columns()
+    )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {sql_quote(table_name)} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kurs INTEGER NOT NULL,
+            {price_columns_sql},
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{table_name}_created_at ON {sql_quote(table_name)}(created_at)"
+    )
 
 
 def init_db():
@@ -85,31 +125,13 @@ def init_db():
             )
             """
         )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS price_items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                generation_id INTEGER NOT NULL,
-                org TEXT NOT NULL,
-                sample INTEGER NOT NULL,
-                price_from INTEGER NOT NULL,
-                price_to INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (generation_id) REFERENCES price_generations(id)
-            )
-            """
-        )
+        for table_name in PRICE_TABLES.values():
+            create_flat_price_table(conn, table_name)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_price_generations_created_at ON price_generations(created_at)"
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_generated_images_generation_id ON generated_images(generation_id)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_price_items_generation_org ON price_items(generation_id, org)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_price_items_org_sample_created ON price_items(org, sample, created_at)"
         )
 
 
@@ -122,6 +144,11 @@ def cleanup_old_generations():
             (cutoff_text,),
         ).fetchall()
         generation_ids = [row[0] for row in rows]
+        for table_name in PRICE_TABLES.values():
+            conn.execute(
+                f"DELETE FROM {sql_quote(table_name)} WHERE created_at < ?",
+                (cutoff_text,),
+            )
         if not generation_ids:
             return
 
@@ -145,14 +172,9 @@ def cleanup_old_generations():
             generation_ids,
         )
         conn.execute(
-            f"DELETE FROM price_items WHERE generation_id IN ({placeholders})",
-            generation_ids,
-        )
-        conn.execute(
             f"DELETE FROM price_generations WHERE id IN ({placeholders})",
             generation_ids,
         )
-
 
 def parse_main_rate(text):
     match = re.search(r"\d+(?:[.,]\d+)?", text or "")
@@ -224,6 +246,28 @@ def is_generated_today(generation):
     return created_at.date() == datetime.now().date()
 
 
+def save_flat_price_row(conn, org, main_rate, created_at):
+    table_name = PRICE_TABLES[org]
+    prices = calculate_prices(main_rate, org)
+    columns = ["kurs"]
+    values = [kurs_value(main_rate)]
+
+    for sample in PROBES:
+        price_from, price_to = prices[str(sample)]
+        columns.extend((f"{sample}_from", f"{sample}_to"))
+        values.extend((price_from, price_to))
+
+    columns.append("created_at")
+    values.append(created_at)
+
+    columns_sql = ", ".join(sql_quote(column) for column in columns)
+    placeholders = ", ".join("?" for _ in values)
+    conn.execute(
+        f"INSERT INTO {sql_quote(table_name)} ({columns_sql}) VALUES ({placeholders})",
+        values,
+    )
+
+
 def save_generation(main_rate, rows, images, created_by):
     created_at = datetime.now().isoformat(timespec="seconds")
     rows_json = json.dumps(rows, ensure_ascii=False)
@@ -255,18 +299,7 @@ def save_generation(main_rate, rows, images, created_by):
             saved_images.append({**item, "path": path})
 
         for org in ORG_ORDER:
-            prices = calculate_prices(main_rate, org)
-            for sample in PROBES:
-                price_from, price_to = prices[str(sample)]
-                conn.execute(
-                    """
-                    INSERT INTO price_items (
-                        generation_id, org, sample, price_from, price_to, created_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (generation_id, org, sample, price_from, price_to, created_at),
-                )
+            save_flat_price_row(conn, org, main_rate, created_at)
 
     return {
         "id": generation_id,
