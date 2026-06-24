@@ -2,11 +2,11 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+import pymysql
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
 from aiogram.types import (
@@ -28,10 +28,20 @@ load_dotenv()
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 CACHE_DIR = ROOT / "cache" / "generated"
-DB_PATH = DATA_DIR / "price_history.sqlite3"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 PHONE = os.getenv("PHONE", "").strip()
+DB_CONFIG = {
+    "host": os.getenv("DB_HOST", "localhost"),
+    "port": int(os.getenv("DB_PORT", "3306")),
+    "user": os.getenv("DB_USER", ""),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "database": os.getenv("DB_NAME", ""),
+    "charset": "utf8mb4",
+    "connect_timeout": 5,
+    "read_timeout": 10,
+    "write_timeout": 10,
+}
 
 dp = Dispatcher()
 
@@ -60,13 +70,35 @@ def main_keyboard():
     )
 
 
+class DbConnection:
+    def __enter__(self):
+        self.conn = pymysql.connect(**DB_CONFIG)
+        self.cursor = self.conn.cursor()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        try:
+            if exc_type:
+                self.conn.rollback()
+            else:
+                self.conn.commit()
+        finally:
+            self.cursor.close()
+            self.conn.close()
+
+    def execute(self, sql, params=None):
+        self.cursor.execute(sql, params or ())
+        return self.cursor
+
+
 def db_connect():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return sqlite3.connect(DB_PATH)
+    if not DB_CONFIG["user"] or not DB_CONFIG["database"]:
+        raise RuntimeError("MySQL settings are empty. Fill DB_HOST, DB_USER, DB_PASSWORD, DB_NAME in .env")
+    return DbConnection()
 
 
 def sql_quote(name):
-    return '"' + str(name).replace('"', '""') + '"'
+    return "`" + str(name).replace("`", "``") + "`"
 
 
 def kurs_value(main_rate):
@@ -82,20 +114,18 @@ def flat_price_columns():
 
 def create_flat_price_table(conn, table_name):
     price_columns_sql = ",\n                ".join(
-        f"{sql_quote(column)} INTEGER NOT NULL" for column in flat_price_columns()
+        f"{sql_quote(column)} INT NOT NULL" for column in flat_price_columns()
     )
     conn.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {sql_quote(table_name)} (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kurs INTEGER NOT NULL,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            kurs INT NOT NULL,
             {price_columns_sql},
-            created_at TEXT NOT NULL
-        )
+            created_at DATETIME NOT NULL,
+            INDEX idx_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
-    )
-    conn.execute(
-        f"CREATE INDEX IF NOT EXISTS idx_{table_name}_created_at ON {sql_quote(table_name)}(created_at)"
     )
 
 
@@ -104,55 +134,51 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS price_generations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                main_rate TEXT NOT NULL,
-                rows_json TEXT NOT NULL,
-                created_by INTEGER,
-                created_at TEXT NOT NULL
-            )
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                main_rate VARCHAR(32) NOT NULL,
+                rows_json LONGTEXT NOT NULL,
+                created_by BIGINT NULL,
+                created_at DATETIME NOT NULL,
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS generated_images (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                generation_id INTEGER NOT NULL,
-                org TEXT NOT NULL,
-                filename TEXT NOT NULL,
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                generation_id INT NOT NULL,
+                org VARCHAR(64) NOT NULL,
+                filename VARCHAR(255) NOT NULL,
                 path TEXT NOT NULL,
-                created_at TEXT NOT NULL,
+                created_at DATETIME NOT NULL,
+                INDEX idx_generation_id (generation_id),
                 FOREIGN KEY (generation_id) REFERENCES price_generations(id)
-            )
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         for table_name in PRICE_TABLES.values():
             create_flat_price_table(conn, table_name)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_price_generations_created_at ON price_generations(created_at)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_generated_images_generation_id ON generated_images(generation_id)"
-        )
 
 
 def cleanup_old_generations():
     cutoff = datetime.now() - timedelta(days=7)
-    cutoff_text = cutoff.isoformat(timespec="seconds")
+    cutoff_text = cutoff.strftime("%Y-%m-%d %H:%M:%S")
     with db_connect() as conn:
         rows = conn.execute(
-            "SELECT id FROM price_generations WHERE created_at < ?",
+            "SELECT id FROM price_generations WHERE created_at < %s",
             (cutoff_text,),
         ).fetchall()
         generation_ids = [row[0] for row in rows]
         for table_name in PRICE_TABLES.values():
             conn.execute(
-                f"DELETE FROM {sql_quote(table_name)} WHERE created_at < ?",
+                f"DELETE FROM {sql_quote(table_name)} WHERE created_at < %s",
                 (cutoff_text,),
             )
         if not generation_ids:
             return
 
-        placeholders = ",".join("?" for _ in generation_ids)
+        placeholders = ",".join("%s" for _ in generation_ids)
         image_rows = conn.execute(
             f"SELECT path FROM generated_images WHERE generation_id IN ({placeholders})",
             generation_ids,
@@ -212,7 +238,7 @@ def get_latest_generation():
             """
             SELECT org, filename, path
             FROM generated_images
-            WHERE generation_id = ?
+            WHERE generation_id = %s
             ORDER BY id ASC
             """,
             (row[0],),
@@ -240,7 +266,8 @@ def get_latest_generation():
 
 def is_generated_today(generation):
     try:
-        created_at = datetime.fromisoformat(generation["created_at"])
+        raw_created_at = generation["created_at"]
+        created_at = raw_created_at if isinstance(raw_created_at, datetime) else datetime.fromisoformat(raw_created_at)
     except (KeyError, TypeError, ValueError):
         return False
     return created_at.date() == datetime.now().date()
@@ -261,7 +288,7 @@ def save_flat_price_row(conn, org, main_rate, created_at):
     values.append(created_at)
 
     columns_sql = ", ".join(sql_quote(column) for column in columns)
-    placeholders = ", ".join("?" for _ in values)
+    placeholders = ", ".join("%s" for _ in values)
     conn.execute(
         f"INSERT INTO {sql_quote(table_name)} ({columns_sql}) VALUES ({placeholders})",
         values,
@@ -269,7 +296,7 @@ def save_flat_price_row(conn, org, main_rate, created_at):
 
 
 def save_generation(main_rate, rows, images, created_by):
-    created_at = datetime.now().isoformat(timespec="seconds")
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     rows_json = json.dumps(rows, ensure_ascii=False)
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -277,7 +304,7 @@ def save_generation(main_rate, rows, images, created_by):
         cursor = conn.execute(
             """
             INSERT INTO price_generations (main_rate, rows_json, created_by, created_at)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             """,
             (str(main_rate), rows_json, created_by, created_at),
         )
@@ -292,7 +319,7 @@ def save_generation(main_rate, rows, images, created_by):
             conn.execute(
                 """
                 INSERT INTO generated_images (generation_id, org, filename, path, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
                 (generation_id, item["org"], item["filename"], str(path), created_at),
             )
