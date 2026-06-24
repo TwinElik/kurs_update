@@ -20,7 +20,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from dotenv import load_dotenv
 
 from image_renderer import ORG_TEMPLATES, build_price_image
-from price_algorithm import calculate_prices, price_rows
+from price_algorithm import PROBES, calculate_prices, price_rows
 
 
 load_dotenv()
@@ -86,10 +86,30 @@ def init_db():
             """
         )
         conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS price_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                generation_id INTEGER NOT NULL,
+                org TEXT NOT NULL,
+                sample INTEGER NOT NULL,
+                price_from INTEGER NOT NULL,
+                price_to INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (generation_id) REFERENCES price_generations(id)
+            )
+            """
+        )
+        conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_price_generations_created_at ON price_generations(created_at)"
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_generated_images_generation_id ON generated_images(generation_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_price_items_generation_org ON price_items(generation_id, org)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_price_items_org_sample_created ON price_items(org, sample, created_at)"
         )
 
 
@@ -122,6 +142,10 @@ def cleanup_old_generations():
 
         conn.execute(
             f"DELETE FROM generated_images WHERE generation_id IN ({placeholders})",
+            generation_ids,
+        )
+        conn.execute(
+            f"DELETE FROM price_items WHERE generation_id IN ({placeholders})",
             generation_ids,
         )
         conn.execute(
@@ -229,6 +253,20 @@ def save_generation(main_rate, rows, images, created_by):
                 (generation_id, item["org"], item["filename"], str(path), created_at),
             )
             saved_images.append({**item, "path": path})
+
+        for org in ORG_ORDER:
+            prices = calculate_prices(main_rate, org)
+            for sample in PROBES:
+                price_from, price_to = prices[str(sample)]
+                conn.execute(
+                    """
+                    INSERT INTO price_items (
+                        generation_id, org, sample, price_from, price_to, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (generation_id, org, sample, price_from, price_to, created_at),
+                )
 
     return {
         "id": generation_id,
