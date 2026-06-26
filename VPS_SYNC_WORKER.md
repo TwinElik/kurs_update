@@ -12,7 +12,7 @@ bot generates price
   -> sync_worker.py retries pending/failed jobs later
 ```
 
-RabbitMQ can still exist, but the reliable active path for REG.ru hosting is endpoint + `site_sync_jobs`.
+The reliable active path for REG.ru hosting is endpoint + `site_sync_jobs`.
 
 ## 1. Update VPS
 
@@ -21,7 +21,7 @@ cd ~/Documents/kurs_update
 git pull
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m py_compile bot.py site_sync.py sync_worker.py rabbitmq_events.py
+python -m py_compile bot.py site_sync.py sync_worker.py price_events.py
 ```
 
 ## 2. Configure `.env`

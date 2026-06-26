@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 
 from image_renderer import ORG_TEMPLATES, build_price_image
 from price_algorithm import PROBES, calculate_prices, price_rows
-from rabbitmq_events import build_gold_price_event, publish_gold_price_event
+from price_events import build_gold_price_event
 from site_sync import enqueue_and_send_site_sync_jobs, get_sync_status, init_sync_db, process_sync_jobs
 
 
@@ -391,7 +391,6 @@ async def generate_all_images(message, main_rate):
 
     generation = save_generation(main_rate, rows, images, message.from_user.id)
     event = build_gold_price_event(main_rate, generation)
-    await publish_gold_price_event(main_rate, generation)
     await enqueue_and_send_site_sync_jobs(event)
     await progress.edit_text(
         "Генерация завершена: 4/4"
