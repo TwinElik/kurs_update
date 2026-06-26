@@ -282,10 +282,30 @@ def sync_report_text(results):
 
 
 async def run_manual_sync():
+    def run_in_thread():
+        return asyncio.run(process_sync_jobs_detailed(limit=MANUAL_SYNC_LIMIT))
+
     return await asyncio.wait_for(
-        process_sync_jobs_detailed(limit=MANUAL_SYNC_LIMIT),
+        asyncio.to_thread(run_in_thread),
         timeout=MANUAL_SYNC_TIMEOUT_SECONDS,
     )
+
+
+async def send_manual_sync_result(message: Message):
+    try:
+        results = await run_manual_sync()
+        await message.answer(sync_report_text(results), reply_markup=main_keyboard())
+    except asyncio.TimeoutError:
+        await message.answer(
+            "Синхронизация сайтов:\n"
+            "⏳ Проверка заняла слишком много времени. Задачи остались в очереди, worker повторит их фоном.",
+            reply_markup=main_keyboard(),
+        )
+    except Exception as exc:
+        await message.answer(
+            f"Синхронизация сайтов:\n❌ Ошибка VPS/БД очереди: {type(exc).__name__}: {str(exc)[:180]}",
+            reply_markup=main_keyboard(),
+        )
 
 
 def get_latest_generation():
@@ -533,40 +553,20 @@ async def sync_status(message: Message):
 
 @dp.message(F.text == "/retry_failed")
 async def retry_failed_sync(message: Message):
-    try:
-        results = await run_manual_sync()
-        await message.answer(sync_report_text(results), reply_markup=main_keyboard())
-    except asyncio.TimeoutError:
-        await message.answer(
-            "Синхронизация сайтов:\n"
-            "⏳ Проверка заняла слишком много времени. Задачи остались в очереди, worker повторит их фоном.",
-            reply_markup=main_keyboard(),
-        )
-    except Exception as exc:
-        await message.answer(
-            f"Синхронизация сайтов:\n❌ Ошибка VPS/БД очереди: {type(exc).__name__}: {str(exc)[:180]}",
-            reply_markup=main_keyboard(),
-        )
+    await message.answer(
+        f"Запустил синхронизацию в фоне. Проверяю до {MANUAL_SYNC_LIMIT} задач.",
+        reply_markup=main_keyboard(),
+    )
+    asyncio.create_task(send_manual_sync_result(message))
 
 
 @dp.message(F.text == SYNC_BUTTON)
 async def sync_button(message: Message):
-    progress = await message.answer(
-        f"Синхронизация сайтов...\nПроверяю до {MANUAL_SYNC_LIMIT} задач.",
+    await message.answer(
+        f"Запустил синхронизацию в фоне. Проверяю до {MANUAL_SYNC_LIMIT} задач.",
         reply_markup=main_keyboard(),
     )
-    try:
-        results = await run_manual_sync()
-        await progress.edit_text(sync_report_text(results))
-    except asyncio.TimeoutError:
-        await progress.edit_text(
-            "Синхронизация сайтов:\n"
-            "⏳ Проверка заняла слишком много времени. Задачи остались в очереди, worker повторит их фоном."
-        )
-    except Exception as exc:
-        await progress.edit_text(
-            f"Синхронизация сайтов:\n❌ Ошибка VPS/БД очереди: {type(exc).__name__}: {str(exc)[:180]}"
-        )
+    asyncio.create_task(send_manual_sync_result(message))
 
 
 @dp.message(F.text)

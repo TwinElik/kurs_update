@@ -152,6 +152,8 @@ MANUAL_SYNC_LIMIT=5
 MANUAL_SYNC_TIMEOUT_SECONDS=15
 ```
 
+The bot answers immediately and sends the final sync result as a separate message.
+
 ## 7. SQL checks
 
 All jobs:

@@ -244,6 +244,8 @@ MANUAL_SYNC_LIMIT=5
 MANUAL_SYNC_TIMEOUT_SECONDS=15
 ```
 
+The button immediately replies that sync started in background. The final result arrives as a separate message.
+
 SQL:
 
 ```bash
