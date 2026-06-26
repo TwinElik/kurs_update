@@ -227,6 +227,14 @@ Bot commands:
 /retry_failed
 ```
 
+The main bot keyboard also has:
+
+```text
+🔁 Синхронизировать
+```
+
+After every new generation the bot shows sync results in chat. If a site fails, it returns a readable reason like server not responding, DB/server error, missing token, or endpoint not found.
+
 SQL:
 
 ```bash

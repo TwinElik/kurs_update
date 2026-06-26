@@ -104,6 +104,21 @@ Site sync failed: job=... brand=diamant HTTP 500: ...
 
 Then `kurs-sync` will retry it later.
 
+The bot also shows the sync result in chat right after image generation:
+
+```text
+Синхронизация сайтов:
+✅ Diamant: успешно
+```
+
+If a site fails, the bot shows a readable reason, for example:
+
+```text
+❌ Diamant: сервер сайта не отвечает
+❌ Diamant: ошибка сервера или БД сайта
+❌ Diamant: сайт отклонил токен
+```
+
 ## 6. Bot commands
 
 Send to Telegram bot:
@@ -119,6 +134,14 @@ Shows totals by brand/status and latest jobs.
 ```
 
 Immediately retries pending/failed sync jobs.
+
+The main reply keyboard also has:
+
+```text
+🔁 Синхронизировать
+```
+
+It does the same retry and returns the result in chat.
 
 ## 7. SQL checks
 

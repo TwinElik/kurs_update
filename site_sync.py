@@ -229,6 +229,16 @@ def _mark_job_result(job_id, success, error=None):
                 )
 
 
+def _job_result(job, success, error=None):
+    return {
+        "job_id": job["id"],
+        "brand": job["brand"],
+        "source_price_id": job["source_price_id"],
+        "success": success,
+        "error": error,
+    }
+
+
 async def send_sync_job(job):
     configs = {config["brand"]: config for config in get_site_configs()}
     config = configs.get(job["brand"])
@@ -236,14 +246,14 @@ async def send_sync_job(job):
         error = f"missing endpoint token for brand {job['brand']}"
         _mark_job_result(job["id"], False, error)
         print(f"Site sync failed: job={job['id']} {error}")
-        return False
+        return _job_result(job, False, error)
 
     endpoint_url = config.get("endpoint_url") or job["endpoint_url"]
     if not endpoint_url:
         error = f"missing endpoint url for brand {job['brand']}"
         _mark_job_result(job["id"], False, error)
         print(f"Site sync failed: job={job['id']} {error}")
-        return False
+        return _job_result(job, False, error)
 
     try:
         payload = json.loads(job["payload_json"])
@@ -251,7 +261,7 @@ async def send_sync_job(job):
         error = f"invalid payload json: {exc}"
         _mark_job_result(job["id"], False, error)
         print(f"Site sync failed: job={job['id']} {error}")
-        return False
+        return _job_result(job, False, error)
 
     try:
         timeout = aiohttp.ClientTimeout(total=SYNC_TIMEOUT_SECONDS)
@@ -266,16 +276,16 @@ async def send_sync_job(job):
                     error = f"HTTP {response.status}: {body[:500]}"
                     _mark_job_result(job["id"], False, error)
                     print(f"Site sync failed: job={job['id']} brand={job['brand']} {error}")
-                    return False
+                    return _job_result(job, False, error)
 
         _mark_job_result(job["id"], True)
         print(f"Site sync OK: job={job['id']} brand={job['brand']} source_price_id={job['source_price_id']}")
-        return True
+        return _job_result(job, True)
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
         _mark_job_result(job["id"], False, error)
         print(f"Site sync failed: job={job['id']} brand={job['brand']} {error}")
-        return False
+        return _job_result(job, False, error)
 
 
 async def process_sync_jobs(limit=10):
@@ -283,7 +293,14 @@ async def process_sync_jobs(limit=10):
     if not jobs:
         return 0
     results = await asyncio.gather(*(send_sync_job(job) for job in jobs))
-    return sum(1 for result in results if result)
+    return sum(1 for result in results if result["success"])
+
+
+async def process_sync_jobs_detailed(limit=10):
+    jobs = fetch_sync_jobs(limit=limit)
+    if not jobs:
+        return []
+    return await asyncio.gather(*(send_sync_job(job) for job in jobs))
 
 
 async def enqueue_and_send_site_sync_jobs(event):
@@ -307,5 +324,4 @@ async def enqueue_and_send_site_sync_jobs(event):
     if not jobs:
         return 0
 
-    results = await asyncio.gather(*(send_sync_job(job) for job in jobs))
-    return sum(1 for result in results if result)
+    return await asyncio.gather(*(send_sync_job(job) for job in jobs))

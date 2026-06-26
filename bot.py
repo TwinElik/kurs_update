@@ -22,7 +22,12 @@ from dotenv import load_dotenv
 from image_renderer import ORG_TEMPLATES, build_price_image
 from price_algorithm import PROBES, calculate_prices, price_rows
 from price_events import build_gold_price_event
-from site_sync import enqueue_and_send_site_sync_jobs, get_sync_status, init_sync_db, process_sync_jobs
+from site_sync import (
+    enqueue_and_send_site_sync_jobs,
+    get_sync_status,
+    init_sync_db,
+    process_sync_jobs_detailed,
+)
 
 
 load_dotenv()
@@ -49,6 +54,7 @@ dp = Dispatcher()
 
 GENERATE_BUTTON = "🧮 Изменить курс"
 SHOW_BUTTON = "🖼 Показать 4 фото"
+SYNC_BUTTON = "🔁 Синхронизировать"
 
 ORG_ORDER = ("diamant", "tillachi", "goldexpert", "skupka")
 USER_WAITING_RATE = set()
@@ -64,6 +70,7 @@ def main_keyboard():
     builder = ReplyKeyboardBuilder()
     builder.row(KeyboardButton(text=GENERATE_BUTTON))
     builder.row(KeyboardButton(text=SHOW_BUTTON))
+    builder.row(KeyboardButton(text=SYNC_BUTTON))
     return builder.as_markup(
         resize_keyboard=True,
         one_time_keyboard=False,
@@ -222,6 +229,53 @@ def org_title(org):
 
 def price_text(main_rate, brand="diamant"):
     return f"Основной курс: {main_rate}"
+
+
+def brand_title(brand):
+    titles = {
+        "diamant": "Diamant",
+        "tillachi": "Tillachi Bolla",
+        "goldexpert": "Goldexpert",
+        "skupka": "Skupka",
+    }
+    return titles.get(brand, brand)
+
+
+def human_sync_error(error):
+    if not error:
+        return "неизвестная ошибка"
+    lowered = error.lower()
+    if "missing endpoint token" in lowered:
+        return "не указан токен сайта"
+    if "missing endpoint url" in lowered:
+        return "не указан endpoint сайта"
+    if "connect" in lowered or "cannot connect" in lowered:
+        return "сервер сайта не отвечает"
+    if "timeout" in lowered:
+        return "сервер сайта не ответил вовремя"
+    if "http 403" in lowered:
+        return "сайт отклонил токен"
+    if "http 404" in lowered:
+        return "endpoint на сайте не найден"
+    if "http 500" in lowered:
+        return "ошибка сервера или БД сайта"
+    if "db_" in lowered or "database" in lowered:
+        return "ошибка БД сайта"
+    return error[:180]
+
+
+def sync_report_text(results):
+    if not results:
+        return "Синхронизация сайтов:\nНет задач для синхронизации."
+
+    lines = ["Синхронизация сайтов:"]
+    for result in results:
+        title = brand_title(result["brand"])
+        if result["success"]:
+            lines.append(f"✅ {title}: успешно")
+        else:
+            lines.append(f"❌ {title}: {human_sync_error(result.get('error'))}")
+    return "\n".join(lines)
 
 
 def get_latest_generation():
@@ -391,9 +445,20 @@ async def generate_all_images(message, main_rate):
 
     generation = save_generation(main_rate, rows, images, message.from_user.id)
     event = build_gold_price_event(main_rate, generation)
-    await enqueue_and_send_site_sync_jobs(event)
     await progress.edit_text(
-        "Генерация завершена: 4/4"
+        "Генерация завершена: 4/4\nСинхронизация сайтов..."
+    )
+    try:
+        sync_results = await enqueue_and_send_site_sync_jobs(event)
+    except Exception as exc:
+        await progress.edit_text(
+            "Генерация завершена: 4/4\n\n"
+            "Синхронизация сайтов:\n"
+            f"❌ Ошибка VPS/БД очереди: {type(exc).__name__}: {str(exc)[:180]}"
+        )
+        return
+    await progress.edit_text(
+        "Генерация завершена: 4/4\n\n" + sync_report_text(sync_results)
     )
 
 
@@ -458,8 +523,26 @@ async def sync_status(message: Message):
 
 @dp.message(F.text == "/retry_failed")
 async def retry_failed_sync(message: Message):
-    synced = await process_sync_jobs(limit=20)
-    await message.answer(f"Retry done. Synced jobs: {synced}", reply_markup=main_keyboard())
+    try:
+        results = await process_sync_jobs_detailed(limit=20)
+        await message.answer(sync_report_text(results), reply_markup=main_keyboard())
+    except Exception as exc:
+        await message.answer(
+            f"Синхронизация сайтов:\n❌ Ошибка VPS/БД очереди: {type(exc).__name__}: {str(exc)[:180]}",
+            reply_markup=main_keyboard(),
+        )
+
+
+@dp.message(F.text == SYNC_BUTTON)
+async def sync_button(message: Message):
+    progress = await message.answer("Синхронизация сайтов...", reply_markup=main_keyboard())
+    try:
+        results = await process_sync_jobs_detailed(limit=20)
+        await progress.edit_text(sync_report_text(results))
+    except Exception as exc:
+        await progress.edit_text(
+            f"Синхронизация сайтов:\n❌ Ошибка VPS/БД очереди: {type(exc).__name__}: {str(exc)[:180]}"
+        )
 
 
 @dp.message(F.text)
