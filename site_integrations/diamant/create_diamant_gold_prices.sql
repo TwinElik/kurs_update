@@ -1,3 +1,5 @@
+USE `u0861209_ocar517`;
+
 CREATE TABLE IF NOT EXISTS `diamant_gold_prices` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `source_price_id` INT NOT NULL,
