@@ -94,6 +94,10 @@ RABBITMQ_QUEUE=gold_price_events
 ENABLE_DIAMANT_ENDPOINT_SYNC=1
 DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
 DIAMANT_ENDPOINT_TOKEN=mUaGcwNqfXcZz0p8xsugs3VM7g2ww5K2p6rCRy6orcU
+DIAMANT_SYNC_ENABLED=1
+SITE_SYNC_TIMEOUT_SECONDS=10
+SYNC_WORKER_INTERVAL_SECONDS=60
+SYNC_WORKER_BATCH_SIZE=10
 ```
 
 `BOT_TOKEN` must also exist in `.env`.
@@ -161,6 +165,7 @@ goldexpert_gold_prices
 price_generations
 skupka_gold_prices
 tillachi_gold_prices
+site_sync_jobs
 ```
 
 ## 7. Restart service
@@ -174,6 +179,22 @@ Follow logs:
 
 ```bash
 journalctl -u kurs -f
+```
+
+Install sync retry worker:
+
+```bash
+sudo cp systemd/kurs-sync.service /etc/systemd/system/kurs-sync.service
+sudo systemctl daemon-reload
+sudo systemctl enable kurs-sync
+sudo systemctl start kurs-sync
+sudo systemctl status kurs-sync
+```
+
+Follow worker logs:
+
+```bash
+journalctl -u kurs-sync -f
 ```
 
 ## 8. If bot is running manually

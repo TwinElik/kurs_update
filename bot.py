@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from image_renderer import ORG_TEMPLATES, build_price_image
 from price_algorithm import PROBES, calculate_prices, price_rows
 from rabbitmq_events import build_gold_price_event, publish_gold_price_event
-from site_endpoint_sender import send_diamant_price_event
+from site_sync import enqueue_and_send_site_sync_jobs, get_sync_status, init_sync_db, process_sync_jobs
 
 
 load_dotenv()
@@ -161,6 +161,7 @@ def init_db():
         )
         for table_name in PRICE_TABLES.values():
             create_flat_price_table(conn, table_name)
+    init_sync_db()
 
 
 def cleanup_old_generations():
@@ -391,7 +392,7 @@ async def generate_all_images(message, main_rate):
     generation = save_generation(main_rate, rows, images, message.from_user.id)
     event = build_gold_price_event(main_rate, generation)
     await publish_gold_price_event(main_rate, generation)
-    await send_diamant_price_event(event)
+    await enqueue_and_send_site_sync_jobs(event)
     await progress.edit_text(
         "Генерация завершена: 4/4"
     )
@@ -429,6 +430,37 @@ async def show_last_images(message: Message):
     await message.answer_media_group(
         media_group_from_images(latest["images"], latest["main_rate"])
     )
+
+
+@dp.message(F.text == "/sync_status")
+async def sync_status(message: Message):
+    status = get_sync_status()
+    lines = ["Site sync status:"]
+    if not status["totals"]:
+        lines.append("No sync jobs yet.")
+    else:
+        for row in status["totals"]:
+            lines.append(f"{row['brand']}: {row['status']} = {row['count']}")
+
+    if status["latest"]:
+        lines.append("")
+        lines.append("Latest:")
+        for row in status["latest"][:5]:
+            error = row["last_error"] or ""
+            if len(error) > 80:
+                error = error[:77] + "..."
+            lines.append(
+                f"#{row['id']} {row['brand']} source={row['source_price_id']} "
+                f"{row['status']} attempts={row['attempts']} {error}"
+            )
+
+    await message.answer("\n".join(lines), reply_markup=main_keyboard())
+
+
+@dp.message(F.text == "/retry_failed")
+async def retry_failed_sync(message: Message):
+    synced = await process_sync_jobs(limit=20)
+    await message.answer(f"Retry done. Synced jobs: {synced}", reply_markup=main_keyboard())
 
 
 @dp.message(F.text)
