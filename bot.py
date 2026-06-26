@@ -21,8 +21,6 @@ from dotenv import load_dotenv
 
 from image_renderer import ORG_TEMPLATES, build_price_image
 from price_algorithm import PROBES, calculate_prices, price_rows
-from rabbitmq_publisher import publish_site_sync_job
-from sites_config import SITE_BY_BRAND, SITES
 
 
 load_dotenv()
@@ -49,8 +47,6 @@ dp = Dispatcher()
 
 GENERATE_BUTTON = "🧮 Изменить курс"
 SHOW_BUTTON = "🖼 Показать 4 фото"
-SYNC_STATUS_BUTTON = "📡 Статус сайтов"
-RETRY_SYNC_BUTTON = "🔁 Повторить failed sync"
 
 ORG_ORDER = ("diamant", "tillachi", "goldexpert", "skupka")
 USER_WAITING_RATE = set()
@@ -66,8 +62,6 @@ def main_keyboard():
     builder = ReplyKeyboardBuilder()
     builder.row(KeyboardButton(text=GENERATE_BUTTON))
     builder.row(KeyboardButton(text=SHOW_BUTTON))
-    builder.row(KeyboardButton(text=SYNC_STATUS_BUTTON))
-    builder.row(KeyboardButton(text=RETRY_SYNC_BUTTON))
     return builder.as_markup(
         resize_keyboard=True,
         one_time_keyboard=False,
@@ -165,26 +159,6 @@ def init_db():
         )
         for table_name in PRICE_TABLES.values():
             create_flat_price_table(conn, table_name)
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS site_sync_jobs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                brand VARCHAR(64) NOT NULL,
-                source_table VARCHAR(128) NOT NULL,
-                source_price_id INT NOT NULL,
-                target_site VARCHAR(255) NOT NULL,
-                target_table VARCHAR(128) NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'pending',
-                attempts INT NOT NULL DEFAULT 0,
-                last_error TEXT NULL,
-                created_at DATETIME NOT NULL,
-                updated_at DATETIME NOT NULL,
-                UNIQUE KEY uq_brand_source_price (brand, source_price_id),
-                INDEX idx_status_created_at (status, created_at),
-                INDEX idx_brand_status (brand, status)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
 
 
 def cleanup_old_generations():
@@ -315,120 +289,10 @@ def save_flat_price_row(conn, org, main_rate, created_at):
 
     columns_sql = ", ".join(sql_quote(column) for column in columns)
     placeholders = ", ".join("%s" for _ in values)
-    cursor = conn.execute(
+    conn.execute(
         f"INSERT INTO {sql_quote(table_name)} ({columns_sql}) VALUES ({placeholders})",
         values,
     )
-    return cursor.lastrowid
-
-
-def create_site_sync_job(conn, org, source_price_id, created_at):
-    site = SITE_BY_BRAND.get(org)
-    if not site:
-        return None
-    cursor = conn.execute(
-        """
-        INSERT INTO site_sync_jobs (
-            brand, source_table, source_price_id, target_site, target_table,
-            status, attempts, created_at, updated_at
-        )
-        VALUES (%s, %s, %s, %s, %s, 'pending', 0, %s, %s)
-        ON DUPLICATE KEY UPDATE
-            status = IF(status = 'success', status, 'pending'),
-            updated_at = VALUES(updated_at)
-        """,
-        (
-            org,
-            site["source_table"],
-            source_price_id,
-            site["target_site"],
-            site["target_table"],
-            created_at,
-            created_at,
-        ),
-    )
-    if cursor.lastrowid:
-        return cursor.lastrowid
-    row = conn.execute(
-        """
-        SELECT id
-        FROM site_sync_jobs
-        WHERE brand = %s AND source_price_id = %s
-        LIMIT 1
-        """,
-        (org, source_price_id),
-    ).fetchone()
-    return row[0] if row else None
-
-
-def queue_site_sync_job(conn, job_id, org, source_price_id):
-    if not job_id:
-        return False
-    published = publish_site_sync_job(
-        {
-            "job_id": job_id,
-            "brand": org,
-            "source_price_id": source_price_id,
-        }
-    )
-    if published:
-        conn.execute(
-            """
-            UPDATE site_sync_jobs
-            SET status = 'queued', updated_at = %s
-            WHERE id = %s AND status IN ('pending', 'failed')
-            """,
-            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), job_id),
-        )
-    return published
-
-
-def get_sync_status_text():
-    with db_connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT brand, status, COUNT(*)
-            FROM site_sync_jobs
-            GROUP BY brand, status
-            ORDER BY brand, status
-            """
-        ).fetchall()
-    if not rows:
-        return "Sync jobs not found yet."
-
-    grouped = {}
-    for brand, status, count in rows:
-        grouped.setdefault(brand, {})[status] = count
-
-    lines = ["Site sync status:"]
-    for site in SITES:
-        brand = site["brand"]
-        stats = grouped.get(brand, {})
-        if not stats:
-            lines.append(f"{brand}: no jobs")
-            continue
-        details = ", ".join(f"{status}={count}" for status, count in sorted(stats.items()))
-        lines.append(f"{brand}: {details}")
-    return "\n".join(lines)
-
-
-def retry_failed_sync_jobs(limit=100):
-    with db_connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, brand, source_price_id
-            FROM site_sync_jobs
-            WHERE status IN ('failed', 'pending')
-            ORDER BY id ASC
-            LIMIT %s
-            """,
-            (limit,),
-        ).fetchall()
-        queued = 0
-        for job_id, brand, source_price_id in rows:
-            if queue_site_sync_job(conn, job_id, brand, source_price_id):
-                queued += 1
-    return len(rows), queued
 
 
 def save_generation(main_rate, rows, images, created_by):
@@ -436,7 +300,6 @@ def save_generation(main_rate, rows, images, created_by):
     rows_json = json.dumps(rows, ensure_ascii=False)
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    sync_jobs = []
     with db_connect() as conn:
         cursor = conn.execute(
             """
@@ -463,13 +326,7 @@ def save_generation(main_rate, rows, images, created_by):
             saved_images.append({**item, "path": path})
 
         for org in ORG_ORDER:
-            source_price_id = save_flat_price_row(conn, org, main_rate, created_at)
-            job_id = create_site_sync_job(conn, org, source_price_id, created_at)
-            sync_jobs.append((job_id, org, source_price_id))
-
-    with db_connect() as conn:
-        for job_id, org, source_price_id in sync_jobs:
-            queue_site_sync_job(conn, job_id, org, source_price_id)
+            save_flat_price_row(conn, org, main_rate, created_at)
 
     return {
         "id": generation_id,
@@ -566,20 +423,6 @@ async def show_last_images(message: Message):
 
     await message.answer_media_group(
         media_group_from_images(latest["images"], latest["main_rate"])
-    )
-
-
-@dp.message(F.text == SYNC_STATUS_BUTTON)
-async def show_sync_status(message: Message):
-    await message.answer(get_sync_status_text(), reply_markup=main_keyboard())
-
-
-@dp.message(F.text == RETRY_SYNC_BUTTON)
-async def retry_sync(message: Message):
-    total, queued = retry_failed_sync_jobs()
-    await message.answer(
-        f"Sync retry: found {total}, queued {queued}.",
-        reply_markup=main_keyboard(),
     )
 
 
