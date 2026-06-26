@@ -57,22 +57,22 @@ function ensureGoldPriceTable(mysqli $db, string $tableName): void
             `id` INT AUTO_INCREMENT PRIMARY KEY,
             `source_price_id` INT NOT NULL,
             `kurs` INT NOT NULL,
-            `375_from` INT NOT NULL,
-            `375_to` INT NOT NULL,
-            `583_from` INT NOT NULL,
-            `583_to` INT NOT NULL,
-            `585_from` INT NOT NULL,
-            `585_to` INT NOT NULL,
-            `750_from` INT NOT NULL,
-            `750_to` INT NOT NULL,
-            `850_from` INT NOT NULL,
-            `850_to` INT NOT NULL,
-            `875_from` INT NOT NULL,
-            `875_to` INT NOT NULL,
-            `916_from` INT NOT NULL,
-            `916_to` INT NOT NULL,
-            `999_from` INT NOT NULL,
-            `999_to` INT NOT NULL,
+            `price_375_from` INT NOT NULL,
+            `price_375_to` INT NOT NULL,
+            `price_583_from` INT NOT NULL,
+            `price_583_to` INT NOT NULL,
+            `price_585_from` INT NOT NULL,
+            `price_585_to` INT NOT NULL,
+            `price_750_from` INT NOT NULL,
+            `price_750_to` INT NOT NULL,
+            `price_850_from` INT NOT NULL,
+            `price_850_to` INT NOT NULL,
+            `price_875_from` INT NOT NULL,
+            `price_875_to` INT NOT NULL,
+            `price_916_from` INT NOT NULL,
+            `price_916_to` INT NOT NULL,
+            `price_999_from` INT NOT NULL,
+            `price_999_to` INT NOT NULL,
             `created_at` DATETIME NOT NULL,
             UNIQUE KEY `uq_source_price_id` (`source_price_id`),
             INDEX `idx_created_at` (`created_at`)
@@ -125,9 +125,9 @@ function insertGoldPrice(mysqli $db, string $tableName, array $payload, array $p
     $values = [(int)$payload['generation_id'], (int)$payload['kurs']];
 
     foreach ($requiredSamples as $sample) {
-        $columns[] = "{$sample}_from";
+        $columns[] = "price_{$sample}_from";
         $values[] = (int)$prices["{$sample}_from"];
-        $columns[] = "{$sample}_to";
+        $columns[] = "price_{$sample}_to";
         $values[] = (int)$prices["{$sample}_to"];
     }
 

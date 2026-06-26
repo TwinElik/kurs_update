@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 
-$secret = 'CHANGE_ME_SECRET_TOKEN';
 $tableName = 'diamant_gold_prices';
 $samples = array('375', '583', '585', '750', '850', '875', '916', '999');
 
@@ -12,6 +11,15 @@ function respond(int $statusCode, array $payload): void
     http_response_code($statusCode);
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+$secretPath = __DIR__ . '/endpoint_token.php';
+if (!is_file($secretPath)) {
+    respond(500, array('ok' => false, 'error' => 'endpoint_token_not_found'));
+}
+$secret = (string)require $secretPath;
+if ($secret === '') {
+    respond(500, array('ok' => false, 'error' => 'endpoint_token_empty'));
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -69,22 +77,22 @@ CREATE TABLE IF NOT EXISTS `{$tableName}` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `source_price_id` INT NOT NULL,
     `kurs` INT NOT NULL,
-    `375_from` INT NOT NULL,
-    `375_to` INT NOT NULL,
-    `583_from` INT NOT NULL,
-    `583_to` INT NOT NULL,
-    `585_from` INT NOT NULL,
-    `585_to` INT NOT NULL,
-    `750_from` INT NOT NULL,
-    `750_to` INT NOT NULL,
-    `850_from` INT NOT NULL,
-    `850_to` INT NOT NULL,
-    `875_from` INT NOT NULL,
-    `875_to` INT NOT NULL,
-    `916_from` INT NOT NULL,
-    `916_to` INT NOT NULL,
-    `999_from` INT NOT NULL,
-    `999_to` INT NOT NULL,
+    `price_375_from` INT NOT NULL,
+    `price_375_to` INT NOT NULL,
+    `price_583_from` INT NOT NULL,
+    `price_583_to` INT NOT NULL,
+    `price_585_from` INT NOT NULL,
+    `price_585_to` INT NOT NULL,
+    `price_750_from` INT NOT NULL,
+    `price_750_to` INT NOT NULL,
+    `price_850_from` INT NOT NULL,
+    `price_850_to` INT NOT NULL,
+    `price_875_from` INT NOT NULL,
+    `price_875_to` INT NOT NULL,
+    `price_916_from` INT NOT NULL,
+    `price_916_to` INT NOT NULL,
+    `price_999_from` INT NOT NULL,
+    `price_999_to` INT NOT NULL,
     `created_at` DATETIME NOT NULL,
     UNIQUE KEY `uq_source_price_id` (`source_price_id`),
     INDEX `idx_created_at` (`created_at`)
@@ -104,7 +112,7 @@ foreach ($samples as $sample) {
         if (!isset($prices[$key])) {
             respond(400, array('ok' => false, 'error' => 'missing_price_' . $key));
         }
-        $columns[] = $key;
+        $columns[] = 'price_' . $key;
         $values[] = (int)$prices[$key];
         $types .= 'i';
     }
