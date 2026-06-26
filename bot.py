@@ -21,7 +21,8 @@ from dotenv import load_dotenv
 
 from image_renderer import ORG_TEMPLATES, build_price_image
 from price_algorithm import PROBES, calculate_prices, price_rows
-from rabbitmq_events import publish_gold_price_event
+from rabbitmq_events import build_gold_price_event, publish_gold_price_event
+from site_endpoint_sender import send_diamant_price_event
 
 
 load_dotenv()
@@ -125,7 +126,7 @@ def create_flat_price_table(conn, table_name):
             {price_columns_sql},
             created_at DATETIME NOT NULL,
             INDEX idx_created_at (created_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ) DEFAULT CHARSET=utf8mb4
         """
     )
 
@@ -141,7 +142,7 @@ def init_db():
                 created_by BIGINT NULL,
                 created_at DATETIME NOT NULL,
                 INDEX idx_created_at (created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ) DEFAULT CHARSET=utf8mb4
             """
         )
         conn.execute(
@@ -155,7 +156,7 @@ def init_db():
                 created_at DATETIME NOT NULL,
                 INDEX idx_generation_id (generation_id),
                 FOREIGN KEY (generation_id) REFERENCES price_generations(id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ) DEFAULT CHARSET=utf8mb4
             """
         )
         for table_name in PRICE_TABLES.values():
@@ -388,7 +389,9 @@ async def generate_all_images(message, main_rate):
         )
 
     generation = save_generation(main_rate, rows, images, message.from_user.id)
+    event = build_gold_price_event(main_rate, generation)
     await publish_gold_price_event(main_rate, generation)
+    await send_diamant_price_event(event)
     await progress.edit_text(
         "Генерация завершена: 4/4"
     )

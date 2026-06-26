@@ -1,51 +1,61 @@
-# Diamant site worker
+# Diamant site sync
 
-This folder contains scripts for the Diamant OpenCart site.
+This folder contains two sync options for the Diamant OpenCart site.
 
-The worker runs on the Diamant hosting/server, connects to RabbitMQ on the VPS, receives gold price events, and inserts a new row into the local Diamant MySQL database.
+## Recommended for REG.ru hosting: HTTP endpoint
 
-## Files
+Use this if the hosting does not provide Supervisor/systemd access.
+
+Files:
 
 ```text
-composer.json
+update-gold-price.php
 create_diamant_gold_prices.sql
-gold_price_worker.php
-supervisor/diamant-gold-price-worker.conf
-systemd/diamant-gold-price-worker.service
 ```
 
-## 1. Copy files to Diamant
+### 1. Create folder on site
 
-Recommended target path:
+Create this folder on the hosting:
 
 ```text
-/var/www/u0861209/data/www/diamant.uz/system/cron/gold_price_worker.php
+/var/www/u0861209/data/www/diamant.uz/api/
 ```
 
-The script expects OpenCart config here:
+Upload:
+
+```text
+update-gold-price.php
+```
+
+Target path:
+
+```text
+/var/www/u0861209/data/www/diamant.uz/api/update-gold-price.php
+```
+
+The script automatically reads OpenCart config from:
 
 ```text
 /var/www/u0861209/data/www/diamant.uz/config.php
 ```
 
-If config is elsewhere, set:
+### 2. Set secret token
 
-```bash
-export OC_CONFIG_PATH=/full/path/to/config.php
+Open `update-gold-price.php` and change:
+
+```php
+$secret = 'CHANGE_ME_SECRET_TOKEN';
 ```
 
-## 2. Install PHP RabbitMQ library
+Use the same value on the VPS in `.env`:
 
-On the Diamant server/site root:
-
-```bash
-cd /var/www/u0861209/data/www/diamant.uz
-composer require php-amqplib/php-amqplib
+```env
+ENABLE_DIAMANT_ENDPOINT_SYNC=1
+DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
+DIAMANT_ENDPOINT_TOKEN=CHANGE_ME_SECRET_TOKEN
 ```
 
-If Composer is not available on the hosting, install `vendor/` locally and upload it to the site root.
-
-## 3. Create table
+### 3. Create MySQL 5.7 table
 
 Run SQL from:
 
@@ -53,21 +63,28 @@ Run SQL from:
 create_diamant_gold_prices.sql
 ```
 
-The worker also tries to create the table automatically, but creating it manually first is cleaner.
+This SQL intentionally does not end with `ENGINE=...`, because some hosting panels complain about that part when pasted manually.
 
-## 4. Test manually
+The endpoint also tries to create the table automatically, but manual creation in phpMyAdmin is easier to debug.
+
+### 4. Test endpoint
+
+Replace `CHANGE_ME_SECRET_TOKEN` before running:
 
 ```bash
-cd /var/www/u0861209/data/www/diamant.uz
-RABBITMQ_HOST=YOUR_VPS_IP \
-RABBITMQ_PORT=5672 \
-RABBITMQ_USER=jewelry_user \
-RABBITMQ_PASSWORD=my_secure_password \
-RABBITMQ_QUEUE=gold_price_events \
-php system/cron/gold_price_worker.php
+curl -X POST "https://diamant.uz/api/update-gold-price.php" \
+  -H "Content-Type: application/json" \
+  -H "X-Gold-Price-Token: CHANGE_ME_SECRET_TOKEN" \
+  -d '{"event":"gold_price_updated","generation_id":999999,"kurs":890000,"created_at":"2026-06-26 12:00:00","brands":{"diamant":{"375_from":575000,"375_to":630000,"583_from":890000,"583_to":1500000,"585_from":890000,"585_to":1090000,"750_from":1145000,"750_to":1500000,"850_from":1300000,"850_to":1500000,"875_from":1340000,"875_to":1540000,"916_from":1400000,"916_to":1600000,"999_from":1530000,"999_to":1680000}}}'
 ```
 
-The script will wait for messages. Generate a new price in the bot and check the table:
+Expected response:
+
+```json
+{"ok":true,"source_price_id":999999}
+```
+
+Check latest row:
 
 ```sql
 SELECT id, source_price_id, kurs, `583_from`, `583_to`, `585_from`, `585_to`, created_at
@@ -76,29 +93,23 @@ ORDER BY id DESC
 LIMIT 1;
 ```
 
-## 5. Run permanently
+## Alternative: RabbitMQ worker
 
-Use Supervisor if available:
+Use this only if the site/server can run a permanent PHP process.
 
-```bash
-sudo cp supervisor/diamant-gold-price-worker.conf /etc/supervisor/conf.d/diamant-gold-price-worker.conf
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl status diamant-gold-price-worker
+Files:
+
+```text
+composer.json
+gold_price_worker.php
+supervisor/diamant-gold-price-worker.conf
+systemd/diamant-gold-price-worker.service
 ```
 
-Or systemd if available:
+This requires:
 
-```bash
-sudo cp systemd/diamant-gold-price-worker.service /etc/systemd/system/diamant-gold-price-worker.service
-sudo systemctl daemon-reload
-sudo systemctl enable diamant-gold-price-worker
-sudo systemctl start diamant-gold-price-worker
-sudo systemctl status diamant-gold-price-worker
-```
+- Composer package `php-amqplib/php-amqplib`;
+- access to run a permanent process through Supervisor or systemd;
+- RabbitMQ port `5672` open from the site server to the VPS.
 
-## Important RabbitMQ behavior
-
-If four sites consume the same queue `gold_price_events`, RabbitMQ will distribute messages between consumers.
-
-For production with multiple sites, use one queue per site or a fanout exchange. Directly consuming `gold_price_events` is okay for the first Diamant-only test.
+If the hosting does not provide Supervisor/systemd, do not use this method.

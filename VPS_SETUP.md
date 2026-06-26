@@ -91,6 +91,9 @@ DB_PASSWORD=CHANGE_ME_STRONG_PASSWORD
 DB_NAME=kurs_update
 RABBITMQ_URL=amqp://jewelry_user:my_secure_password@localhost/
 RABBITMQ_QUEUE=gold_price_events
+ENABLE_DIAMANT_ENDPOINT_SYNC=0
+DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
+DIAMANT_ENDPOINT_TOKEN=put_secret_token_here
 ```
 
 `BOT_TOKEN` must also exist in `.env`.
@@ -198,6 +201,76 @@ sudo rabbitmqctl list_queues name messages_ready messages_unacknowledged durable
 ```
 
 ## 10. Site developer task
+
+### Recommended Diamant sync without Supervisor
+
+If REG.ru hosting does not allow Supervisor/systemd workers, use HTTP endpoint sync.
+
+On Diamant hosting:
+
+1. Create folder:
+
+```text
+/var/www/u0861209/data/www/diamant.uz/api/
+```
+
+2. Upload:
+
+```text
+site_integrations/diamant/update-gold-price.php
+```
+
+to:
+
+```text
+/var/www/u0861209/data/www/diamant.uz/api/update-gold-price.php
+```
+
+3. Edit token in the PHP file:
+
+```php
+$secret = 'CHANGE_ME_SECRET_TOKEN';
+```
+
+4. Run SQL in phpMyAdmin:
+
+```text
+site_integrations/diamant/create_diamant_gold_prices.sql
+```
+
+The SQL is compatible with MySQL 5.7 and does not require the `ENGINE=...` suffix.
+
+On VPS, enable endpoint sync in `.env`:
+
+```env
+ENABLE_DIAMANT_ENDPOINT_SYNC=1
+DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
+DIAMANT_ENDPOINT_TOKEN=CHANGE_ME_SECRET_TOKEN
+```
+
+Restart bot:
+
+```bash
+sudo systemctl restart kurs
+journalctl -u kurs -f
+```
+
+Test endpoint manually:
+
+```bash
+curl -X POST "https://diamant.uz/api/update-gold-price.php" \
+  -H "Content-Type: application/json" \
+  -H "X-Gold-Price-Token: CHANGE_ME_SECRET_TOKEN" \
+  -d '{"event":"gold_price_updated","generation_id":999999,"kurs":890000,"created_at":"2026-06-26 12:00:00","brands":{"diamant":{"375_from":575000,"375_to":630000,"583_from":890000,"583_to":1500000,"585_from":890000,"585_to":1090000,"750_from":1145000,"750_to":1500000,"850_from":1300000,"850_to":1500000,"875_from":1340000,"875_to":1540000,"916_from":1400000,"916_to":1600000,"999_from":1530000,"999_to":1680000}}}'
+```
+
+Expected response:
+
+```json
+{"ok":true,"source_price_id":999999}
+```
+
+### RabbitMQ worker option
 
 Give site developers:
 

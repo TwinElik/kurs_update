@@ -21,4 +21,4 @@ CREATE TABLE IF NOT EXISTS `diamant_gold_prices` (
     `created_at` DATETIME NOT NULL,
     UNIQUE KEY `uq_source_price_id` (`source_price_id`),
     INDEX `idx_created_at` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);

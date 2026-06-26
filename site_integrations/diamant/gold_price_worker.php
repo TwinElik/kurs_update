@@ -76,7 +76,7 @@ function ensureGoldPriceTable(mysqli $db, string $tableName): void
             `created_at` DATETIME NOT NULL,
             UNIQUE KEY `uq_source_price_id` (`source_price_id`),
             INDEX `idx_created_at` (`created_at`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        )
     ";
 
     if (!$db->query($sql)) {
