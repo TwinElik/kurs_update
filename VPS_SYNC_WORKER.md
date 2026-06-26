@@ -36,9 +36,11 @@ Required for Diamant:
 DIAMANT_SYNC_ENABLED=1
 DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
 DIAMANT_ENDPOINT_TOKEN=mUaGcwNqfXcZz0p8xsugs3VM7g2ww5K2p6rCRy6orcU
-SITE_SYNC_TIMEOUT_SECONDS=10
+SITE_SYNC_TIMEOUT_SECONDS=5
 SYNC_WORKER_INTERVAL_SECONDS=60
 SYNC_WORKER_BATCH_SIZE=10
+MANUAL_SYNC_LIMIT=5
+MANUAL_SYNC_TIMEOUT_SECONDS=15
 ```
 
 Future site example:
@@ -142,6 +144,13 @@ The main reply keyboard also has:
 ```
 
 It does the same retry and returns the result in chat.
+
+Manual sync checks a small batch and has its own UI timeout:
+
+```env
+MANUAL_SYNC_LIMIT=5
+MANUAL_SYNC_TIMEOUT_SECONDS=15
+```
 
 ## 7. SQL checks
 

@@ -24,7 +24,7 @@ DB_CONFIG = {
 }
 
 SYNC_JOB_TABLE = "site_sync_jobs"
-SYNC_TIMEOUT_SECONDS = int(os.getenv("SITE_SYNC_TIMEOUT_SECONDS", "10"))
+SYNC_TIMEOUT_SECONDS = int(os.getenv("SITE_SYNC_TIMEOUT_SECONDS", "5"))
 
 
 def _env_name(brand, suffix):
@@ -264,7 +264,11 @@ async def send_sync_job(job):
         return _job_result(job, False, error)
 
     try:
-        timeout = aiohttp.ClientTimeout(total=SYNC_TIMEOUT_SECONDS)
+        timeout = aiohttp.ClientTimeout(
+            total=SYNC_TIMEOUT_SECONDS,
+            sock_connect=SYNC_TIMEOUT_SECONDS,
+            sock_read=SYNC_TIMEOUT_SECONDS,
+        )
         headers = {
             "Content-Type": "application/json",
             "X-Gold-Price-Token": config["token"],
