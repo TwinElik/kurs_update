@@ -6,13 +6,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ENABLE_DIAMANT_ENDPOINT_SYNC = os.getenv("ENABLE_DIAMANT_ENDPOINT_SYNC", "0").strip() == "1"
+DISABLE_DIAMANT_ENDPOINT_SYNC = os.getenv("ENABLE_DIAMANT_ENDPOINT_SYNC", "1").strip() == "0"
 DIAMANT_ENDPOINT_URL = os.getenv("DIAMANT_ENDPOINT_URL", "").strip()
 DIAMANT_ENDPOINT_TOKEN = os.getenv("DIAMANT_ENDPOINT_TOKEN", "").strip()
 
 
 async def send_diamant_price_event(event):
-    if not ENABLE_DIAMANT_ENDPOINT_SYNC:
+    if DISABLE_DIAMANT_ENDPOINT_SYNC:
+        print("Diamant endpoint sync skipped: ENABLE_DIAMANT_ENDPOINT_SYNC=0")
         return False
     if not DIAMANT_ENDPOINT_URL or not DIAMANT_ENDPOINT_TOKEN:
         print("Diamant endpoint sync skipped: DIAMANT_ENDPOINT_URL or DIAMANT_ENDPOINT_TOKEN is empty")
@@ -30,6 +31,7 @@ async def send_diamant_price_event(event):
                 if response.status < 200 or response.status >= 300:
                     print(f"Diamant endpoint sync failed: HTTP {response.status}: {body[:300]}")
                     return False
+        print("Diamant endpoint sync OK")
         return True
     except Exception as exc:
         print(f"Diamant endpoint sync failed: {type(exc).__name__}: {exc}")

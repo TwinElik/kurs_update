@@ -91,9 +91,9 @@ DB_PASSWORD=CHANGE_ME_STRONG_PASSWORD
 DB_NAME=kurs_update
 RABBITMQ_URL=amqp://jewelry_user:my_secure_password@localhost/
 RABBITMQ_QUEUE=gold_price_events
-ENABLE_DIAMANT_ENDPOINT_SYNC=0
+ENABLE_DIAMANT_ENDPOINT_SYNC=1
 DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
-DIAMANT_ENDPOINT_TOKEN=put_secret_token_here
+DIAMANT_ENDPOINT_TOKEN=mUaGcwNqfXcZz0p8xsugs3VM7g2ww5K2p6rCRy6orcU
 ```
 
 `BOT_TOKEN` must also exist in `.env`.
