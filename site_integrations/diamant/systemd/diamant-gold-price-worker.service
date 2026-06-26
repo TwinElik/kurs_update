@@ -1,0 +1,19 @@
+[Unit]
+Description=Diamant gold price RabbitMQ worker
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/u0861209/data/www/diamant.uz
+ExecStart=/usr/bin/php /var/www/u0861209/data/www/diamant.uz/system/cron/gold_price_worker.php
+Restart=always
+RestartSec=5
+User=u0861209
+Environment=RABBITMQ_HOST=YOUR_VPS_IP
+Environment=RABBITMQ_PORT=5672
+Environment=RABBITMQ_USER=jewelry_user
+Environment=RABBITMQ_PASSWORD=my_secure_password
+Environment=RABBITMQ_QUEUE=gold_price_events
+
+[Install]
+WantedBy=multi-user.target
