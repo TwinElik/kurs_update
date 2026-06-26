@@ -2,3 +2,4 @@ aiogram==3.13.1
 python-dotenv==1.0.1
 Pillow==12.2.0
 pymysql==1.1.1
+aio-pika==9.4.3

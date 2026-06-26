@@ -89,11 +89,49 @@ DB_PORT=3306
 DB_USER=kurs_user
 DB_PASSWORD=CHANGE_ME_STRONG_PASSWORD
 DB_NAME=kurs_update
+RABBITMQ_URL=amqp://jewelry_user:my_secure_password@localhost/
+RABBITMQ_QUEUE=gold_price_events
 ```
 
 `BOT_TOKEN` must also exist in `.env`.
 
-## 5. Initialize tables
+## 5. Install RabbitMQ
+
+```bash
+sudo apt update
+sudo apt install rabbitmq-server -y
+sudo systemctl enable rabbitmq-server
+sudo systemctl start rabbitmq-server
+sudo systemctl status rabbitmq-server
+```
+
+Create RabbitMQ user:
+
+```bash
+sudo rabbitmqctl add_user jewelry_user my_secure_password
+sudo rabbitmqctl set_permissions -p / jewelry_user ".*" ".*" ".*"
+```
+
+Optional management UI:
+
+```bash
+sudo rabbitmq-plugins enable rabbitmq_management
+sudo systemctl restart rabbitmq-server
+```
+
+Management UI:
+
+```text
+http://SERVER_IP:15672
+```
+
+Check queue:
+
+```bash
+sudo rabbitmqctl list_queues name messages_ready messages_unacknowledged durable
+```
+
+## 6. Initialize tables
 
 The bot creates tables on startup, but you can initialize them manually:
 
@@ -122,7 +160,7 @@ skupka_gold_prices
 tillachi_gold_prices
 ```
 
-## 6. Restart service
+## 7. Restart service
 
 ```bash
 sudo systemctl restart kurs
@@ -135,7 +173,7 @@ Follow logs:
 journalctl -u kurs -f
 ```
 
-## 7. If bot is running manually
+## 8. If bot is running manually
 
 If you previously started the bot with:
 
@@ -145,7 +183,7 @@ python bot.py
 
 stop it with `Ctrl+C`, otherwise Telegram can return polling conflict.
 
-## 8. Quick data check
+## 9. Quick data check
 
 After generating a rate in the bot, check the latest Diamant row:
 
@@ -153,3 +191,58 @@ After generating a rate in the bot, check the latest Diamant row:
 mysql -u kurs_user -p kurs_update -e "SELECT id, kurs, \`583_from\`, \`583_to\`, \`585_from\`, \`585_to\`, created_at FROM diamant_gold_prices ORDER BY id DESC LIMIT 1;"
 ```
 
+Check RabbitMQ queue:
+
+```bash
+sudo rabbitmqctl list_queues name messages_ready messages_unacknowledged durable
+```
+
+## 10. Site developer task
+
+Give site developers:
+
+```text
+DSN: amqp://jewelry_user:my_secure_password@SERVER_IP:5672/
+Queue name: gold_price_events
+```
+
+The bot publishes JSON messages like:
+
+```json
+{
+  "event": "gold_price_updated",
+  "generation_id": 123,
+  "price": 890.0,
+  "kurs": 890000,
+  "timestamp": 1782315200,
+  "created_at": "2026-06-26 10:00:00",
+  "brands": {
+    "diamant": {
+      "583_from": 890000,
+      "583_to": 1500000,
+      "585_from": 890000,
+      "585_to": 1090000
+    }
+  }
+}
+```
+
+Site worker logic:
+
+1. Listen to RabbitMQ.
+2. Read `gold_price_updated` events.
+3. Insert a new row into the site database.
+4. Clear/update site cache if needed.
+5. Send `basic_ack` only after the site database update succeeds.
+6. Run the worker permanently through Supervisor/systemd.
+
+Important RabbitMQ note:
+
+If several sites consume the same queue `gold_price_events`, RabbitMQ distributes messages between consumers. It does not broadcast one message to every consumer.
+
+For all sites to receive every update, site developers should use one of these approaches:
+
+- one queue per site bound to a shared exchange;
+- or one central site-sync script that consumes `gold_price_events` and then updates every site.
+
+For a first test with one site, direct consume from `gold_price_events` is okay.
