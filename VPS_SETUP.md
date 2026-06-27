@@ -212,6 +212,17 @@ The endpoint loads WordPress through `../wp-load.php` and uses `$wpdb`. It creat
 `skupka_gold_prices` automatically; manual SQL is in
 `site_integrations/skupka/create_skupka_gold_prices.sql`.
 
+Goldexpert is also WordPress. Upload its files from
+`site_integrations/goldexpert/` into the site's `/api/` folder and configure:
+
+```env
+GOLDEXPERT_SYNC_ENABLED=1
+GOLDEXPERT_ENDPOINT_URL=https://goldexpert.uz/api/update-gold-price.php
+GOLDEXPERT_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_GOLDEXPERT
+```
+
+Use a third independent secret. Its table is `goldexpert_gold_prices`.
+
 ## 9. Test site endpoint directly
 
 ```bash
@@ -229,6 +240,7 @@ POST test:
 ```bash
 python scripts/test_diamant_endpoint.py
 python scripts/test_skupka_endpoint.py
+python scripts/test_goldexpert_endpoint.py
 ```
 
 The script signs the exact JSON body with HMAC-SHA256. The site accepts a request

@@ -51,6 +51,14 @@ SKUPKA_ENDPOINT_URL=https://skupka-zolota.uz/api/update-gold-price.php
 SKUPKA_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_THE_SKUPKA_SITE
 ```
 
+Required for Goldexpert after its WordPress endpoint is uploaded:
+
+```env
+GOLDEXPERT_SYNC_ENABLED=1
+GOLDEXPERT_ENDPOINT_URL=https://goldexpert.uz/api/update-gold-price.php
+GOLDEXPERT_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_GOLDEXPERT
+```
+
 Future site example:
 
 ```env

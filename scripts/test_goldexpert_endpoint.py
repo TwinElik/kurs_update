@@ -18,18 +18,16 @@ from price_algorithm import calculate_prices
 
 load_dotenv()
 
-url = os.getenv("SKUPKA_ENDPOINT_URL", "").strip()
-secret = os.getenv("SKUPKA_ENDPOINT_TOKEN", "").strip()
+url = os.getenv("GOLDEXPERT_ENDPOINT_URL", "").strip()
+secret = os.getenv("GOLDEXPERT_ENDPOINT_TOKEN", "").strip()
 if not url or not secret:
-    raise SystemExit("Fill SKUPKA_ENDPOINT_URL and SKUPKA_ENDPOINT_TOKEN in .env")
+    raise SystemExit("Fill GOLDEXPERT_ENDPOINT_URL and GOLDEXPERT_ENDPOINT_TOKEN in .env")
 
 source_price_id = int(time.time())
 main_rate = 890
-price_ranges = calculate_prices(main_rate, "skupka")
+price_ranges = calculate_prices(main_rate, "goldexpert")
 prices = {}
 for sample, (minimum, maximum) in price_ranges.items():
-    if str(sample) == "900":
-        continue
     prices[f"{sample}_from"] = int(minimum)
     prices[f"{sample}_to"] = int(maximum)
 
@@ -38,7 +36,7 @@ payload = {
     "generation_id": source_price_id,
     "kurs": main_rate * 1000,
     "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "brands": {"skupka": prices},
+    "brands": {"goldexpert": prices},
 }
 
 body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
