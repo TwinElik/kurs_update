@@ -166,4 +166,22 @@ if (!$stmt->execute()) {
 $stmt->close();
 $mysqli->close();
 
-respond(200, array('ok' => true, 'source_price_id' => $generationId));
+$clearedCacheFiles = 0;
+if (defined('DIR_CACHE')) {
+    $cachePattern = rtrim(DIR_CACHE, '/\\') . DIRECTORY_SEPARATOR . 'journal3.blocks.352.*';
+    $cacheFiles = glob($cachePattern);
+
+    if (is_array($cacheFiles)) {
+        foreach ($cacheFiles as $cacheFile) {
+            if (is_file($cacheFile) && @unlink($cacheFile)) {
+                $clearedCacheFiles++;
+            }
+        }
+    }
+}
+
+respond(200, array(
+    'ok' => true,
+    'source_price_id' => $generationId,
+    'journal_cache_cleared' => $clearedCacheFiles,
+));
