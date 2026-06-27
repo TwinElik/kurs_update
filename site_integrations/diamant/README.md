@@ -7,7 +7,6 @@ MySQL 5.7. It never accepts the shared secret in an HTTP header or JSON body.
 
 ```text
 update-gold-price.php
-get-gold-prices.php
 endpoint_token.example.php
 create_diamant_gold_prices.sql
 ```
@@ -19,16 +18,6 @@ create_diamant_gold_prices.sql
 ```text
 /var/www/u0861209/data/www/diamant.uz/api/update-gold-price.php
 ```
-
-Upload the public read-only endpoint used by the price page to:
-
-```text
-/var/www/u0861209/data/www/diamant.uz/api/get-gold-prices.php
-```
-
-`GET /api/get-gold-prices.php` returns the latest row from
-`diamant_gold_prices`. It exposes only public prices, course and creation time;
-database credentials remain in the OpenCart config and are never returned.
 
 2. Copy `endpoint_token.example.php` as `endpoint_token.php` in the same folder.
 Replace its value with a random secret of at least 32 bytes. The real
