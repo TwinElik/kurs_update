@@ -43,6 +43,14 @@ MANUAL_SYNC_LIMIT=5
 MANUAL_SYNC_TIMEOUT_SECONDS=15
 ```
 
+Required for Skupka-zolota after its WordPress endpoint is uploaded:
+
+```env
+SKUPKA_SYNC_ENABLED=1
+SKUPKA_ENDPOINT_URL=https://skupka-zolota.uz/api/update-gold-price.php
+SKUPKA_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_THE_SKUPKA_SITE
+```
+
 Future site example:
 
 ```env

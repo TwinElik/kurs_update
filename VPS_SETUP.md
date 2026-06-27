@@ -193,6 +193,25 @@ Create table on the site using:
 site_integrations/diamant/create_diamant_gold_prices.sql
 ```
 
+For the WordPress site Skupka-zolota, create `/api/` in the WordPress root and upload:
+
+```text
+site_integrations/skupka/update-gold-price.php -> api/update-gold-price.php
+site_integrations/skupka/endpoint_token.example.php -> api/endpoint_token.php
+```
+
+Use a separate random HMAC secret and enable it on the VPS:
+
+```env
+SKUPKA_SYNC_ENABLED=1
+SKUPKA_ENDPOINT_URL=https://skupka-zolota.uz/api/update-gold-price.php
+SKUPKA_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_THE_SKUPKA_SITE
+```
+
+The endpoint loads WordPress through `../wp-load.php` and uses `$wpdb`. It creates
+`skupka_gold_prices` automatically; manual SQL is in
+`site_integrations/skupka/create_skupka_gold_prices.sql`.
+
 ## 9. Test site endpoint directly
 
 ```bash
@@ -209,6 +228,7 @@ POST test:
 
 ```bash
 python scripts/test_diamant_endpoint.py
+python scripts/test_skupka_endpoint.py
 ```
 
 The script signs the exact JSON body with HMAC-SHA256. The site accepts a request
