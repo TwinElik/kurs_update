@@ -201,6 +201,39 @@ def get_sync_status(limit=20):
     return {"totals": totals, "latest": latest}
 
 
+def get_latest_sync_results():
+    """Return the newest known sync state for every configured brand."""
+    init_sync_db()
+    with db_connection() as conn:
+        with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+            cursor.execute(
+                f"""
+                SELECT jobs.id, jobs.brand, jobs.source_price_id,
+                       jobs.status, jobs.last_error
+                FROM `{SYNC_JOB_TABLE}` AS jobs
+                INNER JOIN (
+                    SELECT brand, MAX(id) AS latest_id
+                    FROM `{SYNC_JOB_TABLE}`
+                    GROUP BY brand
+                ) AS latest ON latest.latest_id = jobs.id
+                ORDER BY jobs.brand ASC
+                """
+            )
+            rows = list(cursor.fetchall())
+
+    return [
+        {
+            "job_id": row["id"],
+            "brand": row["brand"],
+            "source_price_id": row["source_price_id"],
+            "success": row["status"] == "success",
+            "status": row["status"],
+            "error": row["last_error"],
+        }
+        for row in rows
+    ]
+
+
 def _mark_job_result(job_id, success, error=None):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with db_connection() as conn:

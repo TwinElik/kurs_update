@@ -25,6 +25,7 @@ from price_algorithm import PROBES, calculate_prices, price_rows
 from price_events import build_gold_price_event
 from site_sync import (
     enqueue_and_send_site_sync_jobs,
+    get_latest_sync_results,
     get_sync_status,
     init_sync_db,
     process_sync_jobs_detailed,
@@ -271,13 +272,16 @@ def human_sync_error(error):
 
 def sync_report_text(results):
     if not results:
-        return "Синхронизация сайтов:\nНет задач для синхронизации."
+        return "Синхронизация сайтов:\nИстории синхронизации пока нет."
 
     lines = ["Синхронизация сайтов:"]
     for result in results:
         title = brand_title(result["brand"])
         if result["success"]:
-            lines.append(f"✅ {title}: успешно")
+            suffix = " (уже было синхронизировано)" if result.get("from_history") else ""
+            lines.append(f"✅ {title}: успешно{suffix}")
+        elif result.get("status") == "pending":
+            lines.append(f"⏳ {title}: задача ожидает фоновой обработки")
         else:
             lines.append(f"❌ {title}: {human_sync_error(result.get('error'))}")
     return "\n".join(lines)
@@ -285,7 +289,13 @@ def sync_report_text(results):
 
 async def run_manual_sync():
     def run_in_thread():
-        return asyncio.run(process_sync_jobs_detailed(limit=MANUAL_SYNC_LIMIT))
+        results = asyncio.run(process_sync_jobs_detailed(limit=MANUAL_SYNC_LIMIT))
+        if results:
+            return results
+        latest = get_latest_sync_results()
+        for result in latest:
+            result["from_history"] = True
+        return latest
 
     return await asyncio.wait_for(
         asyncio.to_thread(run_in_thread),
