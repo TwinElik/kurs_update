@@ -59,6 +59,14 @@ GOLDEXPERT_ENDPOINT_URL=https://goldexpert.uz/api/update-gold-price.php
 GOLDEXPERT_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_GOLDEXPERT
 ```
 
+Required for Tillachi Bolla prices on `skupkazolota.uz`:
+
+```env
+TILLACHI_SYNC_ENABLED=1
+TILLACHI_ENDPOINT_URL=https://skupkazolota.uz/api/update-gold-price.php
+TILLACHI_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_THE_TILLACHI_SITE
+```
+
 Future site example:
 
 ```env

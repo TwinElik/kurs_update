@@ -223,6 +223,17 @@ GOLDEXPERT_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_GOLDEXPERT
 
 Use a third independent secret. Its table is `goldexpert_gold_prices`.
 
+The WordPress site `skupkazolota.uz` receives the Tillachi Bolla price map
+(`brands.tillachi`). Upload files from `site_integrations/tillachi/` and configure:
+
+```env
+TILLACHI_SYNC_ENABLED=1
+TILLACHI_ENDPOINT_URL=https://skupkazolota.uz/api/update-gold-price.php
+TILLACHI_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_THE_TILLACHI_SITE
+```
+
+Its table is `tillachi_gold_prices`.
+
 ## 9. Test site endpoint directly
 
 ```bash
@@ -241,6 +252,7 @@ POST test:
 python scripts/test_diamant_endpoint.py
 python scripts/test_skupka_endpoint.py
 python scripts/test_goldexpert_endpoint.py
+python scripts/test_tillachi_endpoint.py
 ```
 
 The script signs the exact JSON body with HMAC-SHA256. The site accepts a request
