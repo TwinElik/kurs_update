@@ -1,6 +1,9 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import os
+import time
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -269,12 +272,25 @@ async def send_sync_job(job):
             sock_connect=SYNC_TIMEOUT_SECONDS,
             sock_read=SYNC_TIMEOUT_SECONDS,
         )
+        body = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        timestamp = str(int(time.time()))
+        signature_payload = timestamp.encode("ascii") + b"." + body
+        signature = hmac.new(
+            config["token"].encode("utf-8"),
+            signature_payload,
+            hashlib.sha256,
+        ).hexdigest()
         headers = {
             "Content-Type": "application/json",
-            "X-Gold-Price-Token": config["token"],
+            "X-Gold-Price-Timestamp": timestamp,
+            "X-Gold-Price-Signature": signature,
         }
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(endpoint_url, json=payload, headers=headers) as response:
+            async with session.post(endpoint_url, data=body, headers=headers) as response:
                 body = await response.text()
                 if response.status < 200 or response.status >= 300:
                     error = f"HTTP {response.status}: {body[:500]}"

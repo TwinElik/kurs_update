@@ -88,7 +88,7 @@ DB_NAME=kurs_update
 
 DIAMANT_SYNC_ENABLED=1
 DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
-DIAMANT_ENDPOINT_TOKEN=mUaGcwNqfXcZz0p8xsugs3VM7g2ww5K2p6rCRy6orcU
+DIAMANT_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_THE_SITE
 
 SITE_SYNC_TIMEOUT_SECONDS=5
 SYNC_WORKER_INTERVAL_SECONDS=60
@@ -177,7 +177,7 @@ For Diamant, upload:
 
 ```text
 site_integrations/diamant/update-gold-price.php
-site_integrations/diamant/endpoint_token.php
+site_integrations/diamant/endpoint_token.example.php
 ```
 
 to:
@@ -208,11 +208,12 @@ Good response:
 POST test:
 
 ```bash
-curl -i -X POST "https://diamant.uz/api/update-gold-price.php" \
-  -H "Content-Type: application/json" \
-  -H "X-Gold-Price-Token: mUaGcwNqfXcZz0p8xsugs3VM7g2ww5K2p6rCRy6orcU" \
-  -d '{"event":"gold_price_updated","generation_id":999999,"kurs":890000,"created_at":"2026-06-26 12:00:00","brands":{"diamant":{"375_from":575000,"375_to":630000,"583_from":890000,"583_to":1500000,"585_from":890000,"585_to":1090000,"750_from":1145000,"750_to":1500000,"850_from":1300000,"850_to":1500000,"875_from":1340000,"875_to":1540000,"916_from":1400000,"916_to":1600000,"999_from":1530000,"999_to":1680000}}}'
+python scripts/test_diamant_endpoint.py
 ```
+
+The script signs the exact JSON body with HMAC-SHA256. The site accepts a request
+only when `X-Gold-Price-Timestamp` is no older than five minutes and
+`X-Gold-Price-Signature` matches. Keep NTP enabled on the VPS and hosting.
 
 Expected:
 
@@ -235,7 +236,7 @@ The main bot keyboard also has:
 🔁 Синхронизировать
 ```
 
-After every new generation the bot shows sync results in chat. If a site fails, it returns a readable reason like server not responding, DB/server error, missing token, or endpoint not found.
+After every new generation the bot shows sync results in chat. If a site fails, it returns a readable reason like server not responding, DB/server error, invalid HMAC signature, clock mismatch, or endpoint not found.
 
 Manual sync button checks only a small batch so the bot UI does not hang:
 

@@ -35,7 +35,7 @@ Required for Diamant:
 ```env
 DIAMANT_SYNC_ENABLED=1
 DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
-DIAMANT_ENDPOINT_TOKEN=mUaGcwNqfXcZz0p8xsugs3VM7g2ww5K2p6rCRy6orcU
+DIAMANT_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_THE_SITE
 SITE_SYNC_TIMEOUT_SECONDS=5
 SYNC_WORKER_INTERVAL_SECONDS=60
 SYNC_WORKER_BATCH_SIZE=10
@@ -118,7 +118,7 @@ If a site fails, the bot shows a readable reason, for example:
 ```text
 ❌ Diamant: сервер сайта не отвечает
 ❌ Diamant: ошибка сервера или БД сайта
-❌ Diamant: сайт отклонил токен
+❌ Diamant: сайт отклонил HMAC-подпись
 ```
 
 ## 6. Bot commands

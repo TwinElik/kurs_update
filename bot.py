@@ -249,15 +249,17 @@ def human_sync_error(error):
         return "неизвестная ошибка"
     lowered = error.lower()
     if "missing endpoint token" in lowered:
-        return "не указан токен сайта"
+        return "не указан секрет HMAC сайта"
     if "missing endpoint url" in lowered:
         return "не указан endpoint сайта"
     if "connect" in lowered or "cannot connect" in lowered:
         return "сервер сайта не отвечает"
     if "timeout" in lowered:
         return "сервер сайта не ответил вовремя"
+    if "http 401" in lowered:
+        return "подпись отсутствует или время серверов не совпадает"
     if "http 403" in lowered:
-        return "сайт отклонил токен"
+        return "сайт отклонил HMAC-подпись"
     if "http 404" in lowered:
         return "endpoint на сайте не найден"
     if "http 500" in lowered:

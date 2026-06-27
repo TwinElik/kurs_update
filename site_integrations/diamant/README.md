@@ -1,89 +1,72 @@
 # Diamant site endpoint
 
-This folder contains the Diamant OpenCart endpoint for gold price updates.
+The OpenCart endpoint receives signed gold-price events and inserts them into
+MySQL 5.7. It never accepts the shared secret in an HTTP header or JSON body.
 
 ## Files
 
 ```text
 update-gold-price.php
-endpoint_token.php
+endpoint_token.example.php
 create_diamant_gold_prices.sql
 ```
 
-## 1. Upload files
+## Deploy
 
-Create folder:
-
-```text
-/var/www/u0861209/data/www/diamant.uz/api/
-```
-
-Upload:
-
-```text
-update-gold-price.php
-endpoint_token.php
-```
-
-Target paths:
+1. Upload `update-gold-price.php` to:
 
 ```text
 /var/www/u0861209/data/www/diamant.uz/api/update-gold-price.php
-/var/www/u0861209/data/www/diamant.uz/api/endpoint_token.php
 ```
 
-The endpoint reads OpenCart config from:
+2. Copy `endpoint_token.example.php` as `endpoint_token.php` in the same folder.
+Replace its value with a random secret of at least 32 bytes. The real
+`endpoint_token.php` is ignored by Git and must not be committed.
 
-```text
-/var/www/u0861209/data/www/diamant.uz/config.php
-```
-
-## 2. Token
-
-The endpoint token is stored in:
-
-```text
-endpoint_token.php
-```
-
-Use the same token on the VPS:
+3. Put the same secret on the VPS:
 
 ```env
 DIAMANT_SYNC_ENABLED=1
 DIAMANT_ENDPOINT_URL=https://diamant.uz/api/update-gold-price.php
-DIAMANT_ENDPOINT_TOKEN=mUaGcwNqfXcZz0p8xsugs3VM7g2ww5K2p6rCRy6orcU
+DIAMANT_ENDPOINT_TOKEN=THE_SAME_RANDOM_HMAC_SECRET_AS_ON_THE_SITE
 ```
 
-## 3. Create MySQL 5.7 table
+4. Run `create_diamant_gold_prices.sql` in the Diamant database.
 
-Run:
-
-```text
-create_diamant_gold_prices.sql
-```
-
-The SQL avoids column names starting with digits and does not use `ENGINE=...`.
-
-## 4. Test endpoint
+5. Test from the VPS:
 
 ```bash
-curl -X POST "https://diamant.uz/api/update-gold-price.php" \
-  -H "Content-Type: application/json" \
-  -H "X-Gold-Price-Token: mUaGcwNqfXcZz0p8xsugs3VM7g2ww5K2p6rCRy6orcU" \
-  -d '{"event":"gold_price_updated","generation_id":999999,"kurs":890000,"created_at":"2026-06-26 12:00:00","brands":{"diamant":{"375_from":575000,"375_to":630000,"583_from":890000,"583_to":1500000,"585_from":890000,"585_to":1090000,"750_from":1145000,"750_to":1500000,"850_from":1300000,"850_to":1500000,"875_from":1340000,"875_to":1540000,"916_from":1400000,"916_to":1600000,"999_from":1530000,"999_to":1680000}}}'
+python scripts/test_diamant_endpoint.py
 ```
 
-Expected:
+Expected response:
 
 ```json
-{"ok":true,"source_price_id":999999}
+{"ok":true,"source_price_id":1234567890}
 ```
 
-Check row:
+## Signature protocol
 
-```sql
-SELECT id, source_price_id, kurs, price_583_from, price_583_to, price_585_from, price_585_to, created_at
-FROM diamant_gold_prices
-ORDER BY id DESC
-LIMIT 1;
+The VPS serializes compact UTF-8 JSON and calculates:
+
+```text
+HMAC_SHA256(secret, timestamp + "." + raw_request_body)
 ```
+
+Headers:
+
+```text
+X-Gold-Price-Timestamp: Unix timestamp
+X-Gold-Price-Signature: lowercase hexadecimal HMAC
+```
+
+The PHP endpoint calculates the signature from the exact raw request body,
+uses `hash_equals`, and rejects requests older than five minutes. Server clocks
+must be synchronized through NTP.
+
+## Safe rollout order
+
+1. Upload the new PHP endpoint and secret to the site.
+2. Put the same secret in VPS `.env`.
+3. Pull the new VPS code and restart bot/worker services.
+4. Run the test script.

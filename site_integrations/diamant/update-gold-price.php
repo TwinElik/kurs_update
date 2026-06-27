@@ -27,18 +27,33 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $rawBody = file_get_contents('php://input');
-$data = json_decode($rawBody, true);
+$timestamp = isset($_SERVER['HTTP_X_GOLD_PRICE_TIMESTAMP'])
+    ? (string)$_SERVER['HTTP_X_GOLD_PRICE_TIMESTAMP']
+    : '';
+$signature = isset($_SERVER['HTTP_X_GOLD_PRICE_SIGNATURE'])
+    ? strtolower((string)$_SERVER['HTTP_X_GOLD_PRICE_SIGNATURE'])
+    : '';
 
-if (!is_array($data)) {
-    respond(400, array('ok' => false, 'error' => 'invalid_json'));
+if ($timestamp === '' || $signature === '') {
+    respond(401, array('ok' => false, 'error' => 'missing_signature'));
 }
 
-$headerToken = isset($_SERVER['HTTP_X_GOLD_PRICE_TOKEN']) ? (string)$_SERVER['HTTP_X_GOLD_PRICE_TOKEN'] : '';
-$bodyToken = isset($data['token']) ? (string)$data['token'] : '';
-$token = $headerToken !== '' ? $headerToken : $bodyToken;
+if (!ctype_digit($timestamp)) {
+    respond(401, array('ok' => false, 'error' => 'invalid_timestamp'));
+}
 
-if (!hash_equals($secret, $token)) {
-    respond(403, array('ok' => false, 'error' => 'forbidden'));
+if (abs(time() - (int)$timestamp) > 300) {
+    respond(401, array('ok' => false, 'error' => 'expired_request'));
+}
+
+$expectedSignature = hash_hmac('sha256', $timestamp . '.' . $rawBody, $secret);
+if (!hash_equals($expectedSignature, $signature)) {
+    respond(403, array('ok' => false, 'error' => 'invalid_signature'));
+}
+
+$data = json_decode($rawBody, true);
+if (!is_array($data)) {
+    respond(400, array('ok' => false, 'error' => 'invalid_json'));
 }
 
 if (($data['event'] ?? '') !== 'gold_price_updated') {
