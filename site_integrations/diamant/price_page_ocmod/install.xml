@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+  <name>Diamant Dynamic Gold Prices</name>
+  <code>diamant_dynamic_gold_prices</code>
+  <version>1.0.0</version>
+  <author>Diamant</author>
+
+  <file path="catalog/model/catalog/information.php">
+    <operation>
+      <search><![CDATA[	public function getInformations() {]]></search>
+      <add position="before"><![CDATA[	public function getLatestGoldPrices() {
+		$table_query = $this->db->query("SHOW TABLES LIKE 'diamant_gold_prices'");
+
+		if (!$table_query->num_rows) {
+			return array();
+		}
+
+		$query = $this->db->query("SELECT * FROM `diamant_gold_prices` ORDER BY `id` DESC LIMIT 1");
+
+		return $query->row;
+	}
+
+]]></add>
+    </operation>
+  </file>
+
+  <file path="catalog/controller/information/information.php">
+    <operation>
+      <search><![CDATA[			$data['description'] = html_entity_decode($information_info['description'], ENT_QUOTES, 'UTF-8');]]></search>
+      <add position="replace"><![CDATA[			$description = html_entity_decode($information_info['description'], ENT_QUOTES, 'UTF-8');
+
+			if (strpos($description, '{{gold_price_') !== false) {
+				$latest_gold_prices = $this->model_catalog_information->getLatestGoldPrices();
+				$gold_price_fallbacks = array(
+					'583' => array(870000, 1500000),
+					'585' => array(870000, 1000000),
+					'750' => array(1120000, 1500000),
+					'850' => array(1260000, 1400000),
+					'875' => array(1300000, 1400000),
+					'916' => array(1360000, 1500000),
+					'999' => array(1490000, 1600000)
+				);
+				$gold_price_ranges = array();
+
+				foreach ($gold_price_fallbacks as $probe => $fallback) {
+					$from_key = 'price_' . $probe . '_from';
+					$to_key = 'price_' . $probe . '_to';
+					$from = isset($latest_gold_prices[$from_key]) ? (int)$latest_gold_prices[$from_key] : $fallback[0];
+					$to = isset($latest_gold_prices[$to_key]) ? (int)$latest_gold_prices[$to_key] : $fallback[1];
+					$gold_price_ranges[$probe] = number_format($from, 0, '', ' ') . ' - ' . number_format($to, 0, '', ' ');
+					$description = str_replace('{{gold_price_' . $probe . '}}', $gold_price_ranges[$probe], $description);
+				}
+
+				$description = str_replace('{{gold_price_crowns}}', $gold_price_ranges['850'], $description);
+				$updated_at = !empty($latest_gold_prices['created_at']) ? $latest_gold_prices['created_at'] : '';
+				$description = str_replace('{{gold_prices_updated_at}}', $updated_at, $description);
+			}
+
+			$data['description'] = $description;]]></add>
+    </operation>
+  </file>
+</modification>
