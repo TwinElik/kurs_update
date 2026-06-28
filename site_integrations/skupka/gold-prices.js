@@ -49,6 +49,9 @@
           return formatter.format(Number(fields[field]));
         });
       });
+
+      root.style.visibility = "";
+      root.classList.add("gold-prices-loaded");
     });
   }
 

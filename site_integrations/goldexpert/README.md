@@ -78,7 +78,7 @@ JSON должен содержать `"ok": true` и объект `fields`.
 Пример блока:
 
 ```html
-<div data-gold-prices-root>
+<div data-gold-prices-root style="visibility: hidden;">
   <h5 style="font-size: 28px;"><strong>999 PROBA (24 karat)</strong></h5>
   <p>
     <strong class="nowrap">

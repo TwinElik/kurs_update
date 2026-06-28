@@ -67,7 +67,7 @@ Use an Elementor HTML widget. Price markers should not contain quotes, because
 the WordPress text editor can replace straight quotes with typographic ones:
 
 ```html
-<div data-gold-prices-root>
+<div data-gold-prices-root style="visibility: hidden;">
   Narxi: [gold_price field=proba_999_begin] - [gold_price field=proba_999_end] so'm
 </div>
 
