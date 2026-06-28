@@ -9,6 +9,8 @@
   var pricesUrl = new URL("current-gold-prices.json?v=" + cacheBucket, baseUrl);
   var tokenPattern = /\[gold_price\s+field=["']([a-z0-9_]+)["']\s*\]/gi;
   var formatter = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
+  var currentFields = null;
+  var replaceScheduled = false;
 
   function replaceTokens(fields) {
     var roots = document.querySelectorAll("[data-gold-prices-root]");
@@ -50,6 +52,34 @@
     });
   }
 
+  function scheduleReplace() {
+    if (!currentFields || replaceScheduled) {
+      return;
+    }
+
+    replaceScheduled = true;
+    window.requestAnimationFrame(function () {
+      replaceScheduled = false;
+      replaceTokens(currentFields);
+    });
+  }
+
+  function observePageUpdates() {
+    if (!document.body || typeof MutationObserver === "undefined") {
+      return;
+    }
+
+    var observer = new MutationObserver(function () {
+      scheduleReplace();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  }
+
   function loadPrices() {
     fetch(pricesUrl.toString(), {
       method: "GET",
@@ -67,7 +97,9 @@
         if (!data || data.ok !== true || !data.fields) {
           throw new Error("Invalid gold prices response");
         }
-        replaceTokens(data.fields);
+        currentFields = data.fields;
+        replaceTokens(currentFields);
+        observePageUpdates();
         document.dispatchEvent(new CustomEvent("goldprices:loaded", { detail: data }));
       })
       .catch(function (error) {
