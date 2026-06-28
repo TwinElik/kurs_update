@@ -64,3 +64,19 @@ try:
 except urllib.error.HTTPError as exc:
     print(exc.code, exc.read().decode("utf-8"))
     raise SystemExit(1) from exc
+
+public_url = url.rsplit("/", 1)[0] + "/current-gold-prices.json?v=" + str(source_price_id)
+try:
+    with urllib.request.urlopen(public_url, timeout=10) as response:
+        public_data = json.loads(response.read().decode("utf-8"))
+except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"Public JSON check failed: {exc}") from exc
+
+expected = prices["999_from"]
+actual = public_data.get("fields", {}).get("proba_999_begin")
+if public_data.get("ok") is not True or actual != expected:
+    raise SystemExit(
+        f"Public JSON has wrong proba_999_begin: expected {expected}, got {actual}"
+    )
+
+print(f"Public JSON OK: proba_999_begin={actual}")

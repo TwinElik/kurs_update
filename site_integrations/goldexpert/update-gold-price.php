@@ -137,4 +137,39 @@ if ($wpdb->query($preparedSql) === false) {
     respond(500, array('ok' => false, 'error' => 'insert_failed'));
 }
 
-respond(200, array('ok' => true, 'source_price_id' => $generationId));
+$publicFields = array();
+foreach ($samples as $sample) {
+    $publicFields['proba_' . $sample . '_begin'] = (int)$prices[$sample . '_from'];
+    $publicFields['proba_' . $sample . '_end'] = (int)$prices[$sample . '_to'];
+}
+$publicFields['koronki_zoloto_begin'] = (int)$prices['850_from'];
+$publicFields['koronki_zoloto_end'] = (int)$prices['850_to'];
+
+$publicPayload = array(
+    'ok' => true,
+    'source_price_id' => $generationId,
+    'kurs' => $kurs,
+    'updated_at' => $createdAt,
+    'fields' => $publicFields,
+);
+$json = json_encode($publicPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+$jsonPath = __DIR__ . '/current-gold-prices.json';
+$temporaryPath = $jsonPath . '.tmp.' . getmypid();
+
+if ($json === false || file_put_contents($temporaryPath, $json, LOCK_EX) === false) {
+    @unlink($temporaryPath);
+    respond(500, array('ok' => false, 'error' => 'public_json_write_failed'));
+}
+
+if (!@rename($temporaryPath, $jsonPath)) {
+    @unlink($temporaryPath);
+    respond(500, array('ok' => false, 'error' => 'public_json_replace_failed'));
+}
+
+@chmod($jsonPath, 0644);
+
+respond(200, array(
+    'ok' => true,
+    'source_price_id' => $generationId,
+    'public_json_updated' => true,
+));
