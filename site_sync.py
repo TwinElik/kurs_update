@@ -107,7 +107,7 @@ def init_sync_db():
             )
 
 
-def enqueue_site_sync_jobs(event):
+def enqueue_site_sync_jobs(event, force=False):
     init_sync_db()
     configs = get_site_configs()
     if not configs:
@@ -131,7 +131,10 @@ def enqueue_site_sync_jobs(event):
                     ON DUPLICATE KEY UPDATE
                         endpoint_url = VALUES(endpoint_url),
                         payload_json = VALUES(payload_json),
-                        status = IF(status = 'success', status, 'pending'),
+                        status = IF(%s = 1, 'pending', IF(status = 'success', status, 'pending')),
+                        attempts = IF(%s = 1, 0, attempts),
+                        last_error = IF(%s = 1, NULL, last_error),
+                        synced_at = IF(%s = 1, NULL, synced_at),
                         updated_at = VALUES(updated_at)
                     """,
                     (
@@ -141,6 +144,10 @@ def enqueue_site_sync_jobs(event):
                         payload_json,
                         now,
                         now,
+                        int(force),
+                        int(force),
+                        int(force),
+                        int(force),
                     ),
                 )
                 cursor.execute(
@@ -356,8 +363,8 @@ async def process_sync_jobs_detailed(limit=10):
     return await asyncio.gather(*(send_sync_job(job) for job in jobs))
 
 
-async def enqueue_and_send_site_sync_jobs(event):
-    job_ids = enqueue_site_sync_jobs(event)
+async def enqueue_and_send_site_sync_jobs(event, force=False):
+    job_ids = enqueue_site_sync_jobs(event, force=force)
     if not job_ids:
         return 0
 

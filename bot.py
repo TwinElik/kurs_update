@@ -287,8 +287,14 @@ def sync_report_text(results):
     return "\n".join(lines)
 
 
-async def run_manual_sync():
+async def run_manual_sync(force_latest=False):
+    latest = get_latest_generation() if force_latest else None
+
     def run_in_thread():
+        if latest:
+            event = build_gold_price_event(latest["main_rate"], latest)
+            return asyncio.run(enqueue_and_send_site_sync_jobs(event, force=True))
+
         results = asyncio.run(process_sync_jobs_detailed(limit=MANUAL_SYNC_LIMIT))
         if results:
             return results
@@ -303,9 +309,9 @@ async def run_manual_sync():
     )
 
 
-async def send_manual_sync_result(message: Message):
+async def send_manual_sync_result(message: Message, force_latest=False):
     try:
-        results = await run_manual_sync()
+        results = await run_manual_sync(force_latest=force_latest)
         await message.answer(sync_report_text(results), reply_markup=main_keyboard())
     except asyncio.TimeoutError:
         await message.answer(
@@ -578,7 +584,7 @@ async def sync_button(message: Message):
         f"Запустил синхронизацию в фоне. Проверяю до {MANUAL_SYNC_LIMIT} задач.",
         reply_markup=main_keyboard(),
     )
-    asyncio.create_task(send_manual_sync_result(message))
+    asyncio.create_task(send_manual_sync_result(message, force_latest=True))
 
 
 @dp.message(F.text)
