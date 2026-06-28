@@ -7,7 +7,7 @@
     : new URL("/api/", window.location.origin);
   var cacheBucket = Math.floor(Date.now() / 30000);
   var pricesUrl = new URL("current-gold-prices.json?v=" + cacheBucket, baseUrl);
-  var tokenPattern = /\[gold_price\s+field=["']([a-z0-9_]+)["']\s*\]/gi;
+  var tokenPattern = /\[gold_price\s+field\s*=\s*["'\u00ab\u00bb]?([a-z0-9_]+)["'\u00ab\u00bb]?\s*\]/gi;
   var formatter = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
   var currentFields = null;
   var replaceScheduled = false;
