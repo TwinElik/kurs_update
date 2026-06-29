@@ -288,20 +288,20 @@ def sync_report_text(results):
 
 
 async def run_manual_sync(force_latest=False):
-    latest = get_latest_generation() if force_latest else None
+    latest_generation = get_latest_generation() if force_latest else None
 
     def run_in_thread():
-        if latest:
-            event = build_gold_price_event(latest["main_rate"], latest)
+        if latest_generation:
+            event = build_gold_price_event(latest_generation["main_rate"], latest_generation)
             return asyncio.run(enqueue_and_send_site_sync_jobs(event, force=True))
 
         results = asyncio.run(process_sync_jobs_detailed(limit=MANUAL_SYNC_LIMIT))
         if results:
             return results
-        latest = get_latest_sync_results()
-        for result in latest:
+        latest_results = get_latest_sync_results()
+        for result in latest_results:
             result["from_history"] = True
-        return latest
+        return latest_results
 
     return await asyncio.wait_for(
         asyncio.to_thread(run_in_thread),
