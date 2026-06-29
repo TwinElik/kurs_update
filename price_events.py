@@ -1,4 +1,5 @@
 import time
+from datetime import date, datetime
 
 from price_algorithm import PROBES, calculate_prices
 
@@ -13,6 +14,14 @@ def _flat_prices_for_brand(main_rate, brand):
     return result
 
 
+def _json_created_at(value):
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
 def build_gold_price_event(main_rate, generation):
     return {
         "event": "gold_price_updated",
@@ -20,7 +29,7 @@ def build_gold_price_event(main_rate, generation):
         "price": float(main_rate),
         "kurs": int(float(main_rate) * 1000),
         "timestamp": int(time.time()),
-        "created_at": generation["created_at"],
+        "created_at": _json_created_at(generation["created_at"]),
         "brands": {
             brand: _flat_prices_for_brand(main_rate, brand)
             for brand in ("diamant", "tillachi", "goldexpert", "skupka")
