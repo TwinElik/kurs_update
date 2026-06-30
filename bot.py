@@ -179,16 +179,29 @@ def cleanup_old_generations():
     cutoff = datetime.now() - timedelta(days=7)
     cutoff_text = cutoff.strftime("%Y-%m-%d %H:%M:%S")
     with db_connect() as conn:
-        rows = conn.execute(
-            "SELECT id FROM price_generations WHERE created_at < %s",
-            (cutoff_text,),
-        ).fetchall()
+        latest_generation = conn.execute(
+            "SELECT id FROM price_generations ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        latest_generation_id = latest_generation[0] if latest_generation else None
+        if latest_generation_id is None:
+            rows = []
+        else:
+            rows = conn.execute(
+                "SELECT id FROM price_generations WHERE created_at < %s AND id <> %s",
+                (cutoff_text, latest_generation_id),
+            ).fetchall()
         generation_ids = [row[0] for row in rows]
+
         for table_name in PRICE_TABLES.values():
-            conn.execute(
-                f"DELETE FROM {sql_quote(table_name)} WHERE created_at < %s",
-                (cutoff_text,),
-            )
+            latest_price = conn.execute(
+                f"SELECT id FROM {sql_quote(table_name)} ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if latest_price:
+                conn.execute(
+                    f"DELETE FROM {sql_quote(table_name)} WHERE created_at < %s AND id <> %s",
+                    (cutoff_text, latest_price[0]),
+                )
+
         if not generation_ids:
             return
 
