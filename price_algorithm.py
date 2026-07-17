@@ -4,43 +4,53 @@ from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 PROBES = (375, 583, 585, 750, 850, 875, 916, 999)
 HIDDEN_PROBES = (900,)
 
-BRAND_ADDITIONS = {
-    "tillachi": {
-        375: 40000,
-        585: 190000,
-        850: 190000,
-        875: 190000,
-        900: 190000,
-        916: 190000,
-        999: 140000,
+# Source: Zoloto.xlsx, 2026-07-17.
+# Tillachi Bolla does not have a separate sheet in the new workbook, so it uses
+# the exact same public price ranges as Diamant.
+BRAND_FIXED_MAX_PRICES = {
+    "skupka": {
+        583: 1200000,
+        585: 1000000,
+        850: 1320000,
+        875: 1375000,
+        900: 1500000,
+        916: 1420000,
+        999: 1600000,
     },
     "diamant": {
-        375: 50000,
-        585: 200000,
-        850: 200000,
-        875: 200000,
-        900: 200000,
-        916: 200000,
-        999: 150000,
+        583: 1210000,
+        585: 1000000,
+        850: 1325000,
+        875: 1380000,
+        900: 1500000,
+        916: 1425000,
+        999: 1615000,
     },
-    "skupka": {
-        375: 60000,
-        585: 210000,
-        850: 210000,
-        875: 210000,
-        900: 210000,
-        916: 210000,
-        999: 160000,
+    "tillachi": {
+        583: 1210000,
+        585: 1000000,
+        850: 1325000,
+        875: 1380000,
+        900: 1500000,
+        916: 1425000,
+        999: 1615000,
     },
     "goldexpert": {
-        375: 70000,
-        585: 220000,
-        850: 220000,
-        875: 220000,
-        900: 220000,
-        916: 220000,
-        999: 170000,
+        583: 1220000,
+        585: 1000000,
+        850: 1330000,
+        875: 1385000,
+        900: 1500000,
+        916: 1450000,
+        999: 1590000,
     },
+}
+
+ROUNDUP_MAX_ADDITIONS = {
+    "skupka": {375: 70000},
+    "diamant": {375: 70000},
+    "tillachi": {375: 70000},
+    "goldexpert": {375: 70000},
 }
 
 
@@ -68,10 +78,13 @@ def _start_price(probe, main_rate):
 
 
 def _max_price(probe, start_price, brand):
-    if probe in (583, 750):
+    if probe == 750:
         return start_price + 200000 if 1500000 - start_price < 200000 else 1500000
-    additions = BRAND_ADDITIONS.get(brand, BRAND_ADDITIONS["diamant"])
-    addition = additions.get(probe, BRAND_ADDITIONS["diamant"].get(probe, 200000))
+    fixed_prices = BRAND_FIXED_MAX_PRICES.get(brand, BRAND_FIXED_MAX_PRICES["diamant"])
+    if probe in fixed_prices:
+        return fixed_prices[probe]
+    additions = ROUNDUP_MAX_ADDITIONS.get(brand, ROUNDUP_MAX_ADDITIONS["diamant"])
+    addition = additions.get(probe, ROUNDUP_MAX_ADDITIONS["diamant"].get(probe, 0))
     return roundup_to_10000(start_price) + addition
 
 
