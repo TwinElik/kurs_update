@@ -4,53 +4,57 @@ from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 PROBES = (375, 583, 585, 750, 850, 875, 916, 999)
 HIDDEN_PROBES = (900,)
 
-# Source: Zoloto.xlsx, 2026-07-17.
-# Tillachi Bolla does not have a separate sheet in the new workbook, so it uses
-# the exact same public price ranges as Diamant.
-BRAND_FIXED_MAX_PRICES = {
+# Source: Zoloto.xlsx, main rate 870.
+#
+# The workbook shows a price range, not a fixed "to" price for every future
+# main rate. Store the verified spread ("to" minus "from") per brand/probe so
+# both ends of the range move together when the operator enters a new rate.
+# Tillachi Bolla does not have a separate sheet and follows Diamant.
+BRAND_MAX_ADDITIONS = {
     "skupka": {
-        583: 1200000,
-        585: 1000000,
-        850: 1320000,
-        875: 1375000,
-        900: 1500000,
-        916: 1420000,
-        999: 1600000,
+        375: 70000,
+        583: 330000,
+        585: 180000,
+        750: 380000,
+        850: 75000,
+        875: 75000,
+        900: 155000,
+        916: 90000,
+        999: 105000,
     },
     "diamant": {
-        583: 1210000,
-        585: 1000000,
-        850: 1325000,
-        875: 1380000,
-        900: 1500000,
-        916: 1425000,
-        999: 1615000,
+        375: 70000,
+        583: 340000,
+        585: 180000,
+        750: 380000,
+        850: 75000,
+        875: 85000,
+        900: 155000,
+        916: 60000,
+        999: 120000,
     },
     "tillachi": {
-        583: 1210000,
-        585: 1000000,
-        850: 1325000,
-        875: 1380000,
-        900: 1500000,
-        916: 1425000,
-        999: 1615000,
+        375: 70000,
+        583: 340000,
+        585: 180000,
+        750: 380000,
+        850: 75000,
+        875: 85000,
+        900: 155000,
+        916: 60000,
+        999: 120000,
     },
     "goldexpert": {
-        583: 1220000,
-        585: 1000000,
-        850: 1330000,
-        875: 1385000,
-        900: 1500000,
-        916: 1450000,
-        999: 1590000,
+        375: 70000,
+        583: 350000,
+        585: 180000,
+        750: 380000,
+        850: 70000,
+        875: 90000,
+        900: 155000,
+        916: 80000,
+        999: 95000,
     },
-}
-
-ROUNDUP_MAX_ADDITIONS = {
-    "skupka": {375: 70000},
-    "diamant": {375: 70000},
-    "tillachi": {375: 70000},
-    "goldexpert": {375: 70000},
 }
 
 
@@ -78,14 +82,9 @@ def _start_price(probe, main_rate):
 
 
 def _max_price(probe, start_price, brand):
-    if probe == 750:
-        return start_price + 200000 if 1500000 - start_price < 200000 else 1500000
-    fixed_prices = BRAND_FIXED_MAX_PRICES.get(brand, BRAND_FIXED_MAX_PRICES["diamant"])
-    if probe in fixed_prices:
-        return fixed_prices[probe]
-    additions = ROUNDUP_MAX_ADDITIONS.get(brand, ROUNDUP_MAX_ADDITIONS["diamant"])
-    addition = additions.get(probe, ROUNDUP_MAX_ADDITIONS["diamant"].get(probe, 0))
-    return roundup_to_10000(start_price) + addition
+    additions = BRAND_MAX_ADDITIONS.get(brand, BRAND_MAX_ADDITIONS["diamant"])
+    addition = additions.get(probe, BRAND_MAX_ADDITIONS["diamant"].get(probe, 0))
+    return start_price + addition
 
 
 def calculate_prices(main_rate, brand="diamant", include_hidden=False):

@@ -1,52 +1,55 @@
 const PROBES = [375, 583, 585, 750, 850, 875, 916, 999];
 const HIDDEN_PROBES = [900];
 
-// Source: Zoloto.xlsx, 2026-07-17.
-// Tillachi Bolla uses the exact same public price ranges as Diamant.
-const BRAND_FIXED_MAX_PRICES = {
+// Source: Zoloto.xlsx, main rate 870.
+// Keep the workbook's "to minus from" spread per brand/probe instead of
+// freezing a "to" value that becomes invalid when the main rate changes.
+// Tillachi Bolla uses the same public ranges as Diamant.
+const BRAND_MAX_ADDITIONS = {
   skupka: {
-    583: 1200000,
-    585: 1000000,
-    850: 1320000,
-    875: 1375000,
-    900: 1500000,
-    916: 1420000,
-    999: 1600000,
+    375: 70000,
+    583: 330000,
+    585: 180000,
+    750: 380000,
+    850: 75000,
+    875: 75000,
+    900: 155000,
+    916: 90000,
+    999: 105000,
   },
   diamant: {
-    583: 1210000,
-    585: 1000000,
-    850: 1325000,
-    875: 1380000,
-    900: 1500000,
-    916: 1425000,
-    999: 1615000,
+    375: 70000,
+    583: 340000,
+    585: 180000,
+    750: 380000,
+    850: 75000,
+    875: 85000,
+    900: 155000,
+    916: 60000,
+    999: 120000,
   },
   tillachi: {
-    583: 1210000,
-    585: 1000000,
-    850: 1325000,
-    875: 1380000,
-    900: 1500000,
-    916: 1425000,
-    999: 1615000,
+    375: 70000,
+    583: 340000,
+    585: 180000,
+    750: 380000,
+    850: 75000,
+    875: 85000,
+    900: 155000,
+    916: 60000,
+    999: 120000,
   },
   goldexpert: {
-    583: 1220000,
-    585: 1000000,
-    850: 1330000,
-    875: 1385000,
-    900: 1500000,
-    916: 1450000,
-    999: 1590000,
+    375: 70000,
+    583: 350000,
+    585: 180000,
+    750: 380000,
+    850: 70000,
+    875: 90000,
+    900: 155000,
+    916: 80000,
+    999: 95000,
   },
-};
-
-const ROUNDUP_MAX_ADDITIONS = {
-  skupka: { 375: 70000 },
-  diamant: { 375: 70000 },
-  tillachi: { 375: 70000 },
-  goldexpert: { 375: 70000 },
 };
 
 function excelRound(value, digits = 0) {
@@ -74,16 +77,9 @@ function minPrice(probe, mainRate) {
 }
 
 function maxPrice(probe, startPrice, brand) {
-  if (probe === 750) {
-    return 1500000 - startPrice < 200000 ? startPrice + 200000 : 1500000;
-  }
-  const fixedPrices = BRAND_FIXED_MAX_PRICES[brand] || BRAND_FIXED_MAX_PRICES.diamant;
-  if (Object.prototype.hasOwnProperty.call(fixedPrices, probe)) {
-    return fixedPrices[probe];
-  }
-  const additions = ROUNDUP_MAX_ADDITIONS[brand] || ROUNDUP_MAX_ADDITIONS.diamant;
-  const addition = additions[probe] || ROUNDUP_MAX_ADDITIONS.diamant[probe] || 0;
-  return roundupTo10000(startPrice) + addition;
+  const additions = BRAND_MAX_ADDITIONS[brand] || BRAND_MAX_ADDITIONS.diamant;
+  const addition = additions[probe] || BRAND_MAX_ADDITIONS.diamant[probe] || 0;
+  return startPrice + addition;
 }
 
 function calculatePrices(mainRate, brand = "diamant", includeHidden = false) {
