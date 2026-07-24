@@ -27,11 +27,11 @@ source_price_id = int(time.time())
 main_rate = 890
 price_ranges = calculate_prices(main_rate, "skupka")
 prices = {}
-for sample, (minimum, maximum) in price_ranges.items():
+for sample, price_range in price_ranges.items():
     if str(sample) == "900":
         continue
-    prices[f"{sample}_from"] = int(minimum)
-    prices[f"{sample}_to"] = int(maximum)
+    prices[f"{sample}_from"] = price_range["from"]
+    prices[f"{sample}_to"] = price_range["to"]
 
 payload = {
     "event": "gold_price_updated",

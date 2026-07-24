@@ -405,7 +405,8 @@ def save_flat_price_row(conn, org, main_rate, created_at):
     values = [kurs_value(main_rate)]
 
     for sample in PROBES:
-        price_from, price_to = prices[str(sample)]
+        price_from = prices[sample]["from"]
+        price_to = prices[sample]["to"]
         columns.extend((f"{sample}_from", f"{sample}_to"))
         values.extend((price_from, price_to))
 

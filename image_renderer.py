@@ -137,8 +137,8 @@ def draw_centered(draw, y, text, font, fill, width=CANVAS_WIDTH):
 def draw_price_table(draw, price_ranges, fill):
     sample_font = load_font(PRICE_TABLE["sample_size"], bold=True, family="evolventa")
     price_texts = {
-        probe: f"{format_price(min_price)}-{format_price(max_price)} \u0421\u0423\u041C"
-        for probe, (min_price, max_price) in price_ranges.items()
+        probe: f"{format_price(price_range['from'])}-{format_price(price_range['to'])} \u0421\u0423\u041C"
+        for probe, price_range in price_ranges.items()
     }
     longest_price = max(price_texts.values(), key=len) if price_texts else ""
     price_font = fit_font(

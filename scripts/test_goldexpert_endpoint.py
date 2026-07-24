@@ -27,9 +27,9 @@ source_price_id = int(time.time())
 main_rate = 890
 price_ranges = calculate_prices(main_rate, "goldexpert")
 prices = {}
-for sample, (minimum, maximum) in price_ranges.items():
-    prices[f"{sample}_from"] = int(minimum)
-    prices[f"{sample}_to"] = int(maximum)
+for sample, price_range in price_ranges.items():
+    prices[f"{sample}_from"] = price_range["from"]
+    prices[f"{sample}_to"] = price_range["to"]
 
 payload = {
     "event": "gold_price_updated",

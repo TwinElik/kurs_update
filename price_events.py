@@ -8,7 +8,8 @@ def _flat_prices_for_brand(main_rate, brand):
     prices = calculate_prices(main_rate, brand)
     result = {}
     for sample in PROBES:
-        price_from, price_to = prices[str(sample)]
+        price_from = prices[sample]["from"]
+        price_to = prices[sample]["to"]
         result[f"{sample}_from"] = price_from
         result[f"{sample}_to"] = price_to
     return result
