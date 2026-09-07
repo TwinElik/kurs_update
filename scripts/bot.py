@@ -3568,7 +3568,7 @@ def public_media_url(product):
         suffix = Path(image).suffix.lower()
         if suffix not in PHOTO_EXTENSIONS and suffix not in VIDEO_EXTENSIONS:
             continue
-        encoded = quote(image.replace("\\", "/"), safe="/")
+        encoded = quote(image.replace("\\", "/"), safe="/%")
         media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
         return PUBLIC_IMAGE_URL + encoded, media_type
     return None, None
@@ -3578,7 +3578,7 @@ def public_media_url_from_relative_path(path, media_type):
     path = original_image_path(path or "")
     if is_placeholder_or_cache(path):
         return None
-    return PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/"), media_type
+    return PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/%"), media_type
 
 
 def media_path_candidates(image):
@@ -3617,7 +3617,7 @@ def public_media_urls_for_product(product_id):
             if path.startswith(("http://", "https://")):
                 url = path
             else:
-                url = PUBLIC_IMAGE_URL + quote(path, safe="/")
+                url = PUBLIC_IMAGE_URL + quote(path, safe="/%")
             items.append((url, media_type))
         return items
 
