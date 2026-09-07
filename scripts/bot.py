@@ -3695,6 +3695,40 @@ def public_media_urls_for_product(product_id):
     return ([first_photo, primary] + unique_extras)[:MAX_PRODUCT_MEDIA]
 
 
+async def filter_reachable_media_items(media_items, product_id=None):
+    reachable = []
+    for url, media_type in media_items:
+        try:
+            session = await get_http_session()
+            async with session.head(url, allow_redirects=True) as response:
+                status = response.status
+                content_type = response.headers.get("Content-Type", "")
+                if status != 200:
+                    async with session.get(url, allow_redirects=True, headers={"Range": "bytes=0-0"}) as get_response:
+                        status = get_response.status
+                        content_type = get_response.headers.get("Content-Type", "")
+            if status not in {200, 206}:
+                logger.warning("Media URL skipped for product_id=%s status=%s url=%s", product_id, status, url)
+                print("Media URL skipped:", f"product_id={product_id}", f"status={status}", f"url={url}")
+                continue
+            if media_type == "photo" and not content_type.startswith("image/"):
+                logger.warning("Media URL skipped for product_id=%s content_type=%s url=%s", product_id, content_type, url)
+                print("Media URL skipped:", f"product_id={product_id}", f"content_type={content_type}", f"url={url}")
+                continue
+            if media_type == "video" and not content_type.startswith("video/"):
+                logger.warning("Media URL skipped for product_id=%s content_type=%s url=%s", product_id, content_type, url)
+                print("Media URL skipped:", f"product_id={product_id}", f"content_type={content_type}", f"url={url}")
+                continue
+            reachable.append((url, media_type))
+        except Exception as e:
+            logger.warning("Media URL check failed for product_id=%s url=%s error=%r", product_id, url, e)
+            print("Media URL check failed:", f"product_id={product_id}", f"url={url}", f"error={repr(e)}")
+    if media_items and not reachable:
+        logger.warning("All media URLs unreachable for product_id=%s urls=%s", product_id, [item[0] for item in media_items])
+        print("All media URLs unreachable:", f"product_id={product_id}", f"urls={[item[0] for item in media_items]}")
+    return reachable
+
+
 async def get_http_session():
     global HTTP_SESSION
     if HTTP_SESSION is None or HTTP_SESSION.closed:
@@ -3882,7 +3916,7 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
         await show_text(callback, tr(callback.from_user.id, "product_not_found"), reply_markup=main_menu(callback.from_user.id))
         return
 
-    media_items = public_media_urls_for_product(product_id)
+    media_items = await filter_reachable_media_items(public_media_urls_for_product(product_id), product_id)
     public_media, public_media_type = media_items[0] if media_items else public_media_url(product)
     caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=callback.from_user.id)
     in_cart = in_cart or user_has_cart_item(callback.from_user.id, product_id)
@@ -3912,7 +3946,7 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
     if not product:
         return
 
-    media_items = public_media_urls_for_product(product_id)
+    media_items = await filter_reachable_media_items(public_media_urls_for_product(product_id), product_id)
     public_media, public_media_type = media_items[0] if media_items else (None, None)
     user_id = user_id or message.chat.id
     caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=user_id)
@@ -3948,7 +3982,7 @@ async def prepare_product_card(product_id: int, user_id=None):
     if not product:
         return None
 
-    media_items = public_media_urls_for_product(product_id)
+    media_items = await filter_reachable_media_items(public_media_urls_for_product(product_id), product_id)
     public_media, public_media_type = media_items[0] if media_items else (None, None)
     caption, description_messages = product_caption_payload(
         product,
