@@ -593,8 +593,6 @@ def is_placeholder_or_cache(image):
     return (
         not normalized
         or "no_image" in normalized
-        or normalized.startswith("cache/")
-        or normalized.startswith("image/cache/")
     )
 
 
@@ -3576,28 +3574,59 @@ def public_media_url(product):
     return None, None
 
 
+def public_media_url_from_relative_path(path, media_type):
+    path = original_image_path(path or "")
+    if is_placeholder_or_cache(path):
+        return None
+    return PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/"), media_type
+
+
+def media_path_candidates(image):
+    raw = (image or "").replace("\\", "/").lstrip("/")
+    if not raw:
+        return []
+    if raw.startswith(("http://", "https://")):
+        return [raw]
+    without_image_prefix = raw[len("image/") :] if raw.startswith("image/") else raw
+    candidates = [without_image_prefix, original_image_path(raw)]
+    unique = []
+    seen = set()
+    for path in candidates:
+        path = (path or "").replace("\\", "/").lstrip("/")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique
+
+
 def public_media_urls_for_product(product_id):
     product = get_product(product_id)
     if not product:
         return []
 
     def media_item(image):
-        path = original_image_path(image or "")
-        if is_placeholder_or_cache(path):
-            return None
-        suffix = Path(path).suffix.lower()
-        if suffix not in PHOTO_EXTENSIONS and suffix not in VIDEO_EXTENSIONS:
-            return None
-        media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
-        url = PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/")
-        return (url, media_type)
+        items = []
+        for path in media_path_candidates(image):
+            if is_placeholder_or_cache(path):
+                continue
+            suffix = Path(path.split("?", 1)[0]).suffix.lower()
+            if suffix not in PHOTO_EXTENSIONS and suffix not in VIDEO_EXTENSIONS:
+                continue
+            media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
+            if path.startswith(("http://", "https://")):
+                url = path
+            else:
+                url = PUBLIC_IMAGE_URL + quote(path, safe="/")
+            items.append((url, media_type))
+        return items
 
-    primary = media_item(product.get("image") or "")
+    primary_items = media_item(product.get("image") or "")
+    primary = primary_items[0] if primary_items else None
     extras = []
 
-    fallback = media_item(product.get("fallback_image") or "")
-    if fallback:
-        extras.append(fallback)
+    extras.extend(primary_items[1:])
+    extras.extend(media_item(product.get("fallback_image") or ""))
 
     rows = db_query(
         """
@@ -3609,9 +3638,33 @@ def public_media_urls_for_product(product_id):
         (product_id,),
     )
     for row in rows:
-        item = media_item(row["image"])
-        if item:
-            extras.append(item)
+        extras.extend(media_item(row["image"]))
+
+    if not primary and not extras:
+        local_path, local_media_type = local_media_path(product)
+        if local_path and local_media_type:
+            try:
+                relative_path = local_path.relative_to(IMAGE_ROOT).as_posix()
+                local_item = public_media_url_from_relative_path(relative_path, local_media_type)
+                if local_item:
+                    extras.append(local_item)
+            except ValueError:
+                pass
+
+    if not primary and not extras:
+        logger.warning(
+            "No public media URLs for product_id=%s image=%s fallback_image=%s",
+            product_id,
+            product.get("image"),
+            product.get("fallback_image"),
+        )
+        print(
+            "No public media URLs:",
+            f"product_id={product_id}",
+            f"image={product.get('image')}",
+            f"fallback_image={product.get('fallback_image')}",
+            f"product_image_rows={[row.get('image') for row in rows[:5]]}",
+        )
 
     # Remove duplicates while preserving the database order.
     unique_extras = []
@@ -3833,7 +3886,6 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
     public_media, public_media_type = media_items[0] if media_items else public_media_url(product)
     caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=callback.from_user.id)
     in_cart = in_cart or user_has_cart_item(callback.from_user.id, product_id)
-    markup = product_keyboard(product_id, len(media_items) or 1, 0, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
     fallback_markup = product_action_keyboard(product_id, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
 
     if await send_rich_product_card(
@@ -3851,41 +3903,8 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
             pass
         return
 
-    if public_media_type == "photo":
-        try:
-            data, filename, content_type = await download_public_media(public_media)
-            if not content_type.startswith("image/"):
-                raise ValueError(f"Unexpected content type: {content_type}")
-            await callback.message.answer_photo(
-                photo=BufferedInputFile(data, filename=filename),
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=fallback_markup,
-            )
-            await send_product_description_messages(callback.message, description_messages)
-            await callback.message.delete()
-        except Exception:
-            await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
-            await send_product_description_messages(callback.message, description_messages)
-    elif public_media_type == "video":
-        try:
-            data, filename, content_type = await download_public_media(public_media)
-            if not content_type.startswith("video/"):
-                raise ValueError(f"Unexpected content type: {content_type}")
-            await callback.message.answer_video(
-                video=BufferedInputFile(data, filename=filename),
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=fallback_markup,
-            )
-            await send_product_description_messages(callback.message, description_messages)
-            await callback.message.delete()
-        except Exception:
-            await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
-            await send_product_description_messages(callback.message, description_messages)
-    else:
-        await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
-        await send_product_description_messages(callback.message, description_messages)
+    await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
+    await send_product_description_messages(callback.message, description_messages)
 
 
 async def send_product_card(message: Message, product_id: int, user_id=None):
@@ -3897,7 +3916,6 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
     public_media, public_media_type = media_items[0] if media_items else (None, None)
     user_id = user_id or message.chat.id
     caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=user_id)
-    inline_markup = product_keyboard(product_id, len(media_items) or 1, 0, user_id=user_id)
     fallback_markup = product_action_keyboard(product_id, in_cart=user_has_cart_item(user_id, product_id), user_id=user_id)
     
     # Получаем состояние пользователя для определения правильной ReplyKeyboard
@@ -3919,38 +3937,6 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
     ):
         await send_product_description_messages(message, product_description_messages_payload(product))
         return
-
-    if public_media_type == "photo":
-        try:
-            data, filename, content_type = await download_public_media(public_media)
-            if not content_type.startswith("image/"):
-                raise ValueError(f"Unexpected content type: {content_type}")
-            await message.answer_photo(
-                photo=BufferedInputFile(data, filename=filename),
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=fallback_markup,
-            )
-            await send_product_description_messages(message, description_messages)
-            return
-        except Exception:
-            pass
-
-    if public_media_type == "video":
-        try:
-            data, filename, content_type = await download_public_media(public_media)
-            if not content_type.startswith("video/"):
-                raise ValueError(f"Unexpected content type: {content_type}")
-            await message.answer_video(
-                video=BufferedInputFile(data, filename=filename),
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=fallback_markup,
-            )
-            await send_product_description_messages(message, description_messages)
-            return
-        except Exception:
-            pass
 
     await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
     await send_product_description_messages(message, description_messages)
