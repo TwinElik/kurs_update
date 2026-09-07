@@ -1967,6 +1967,21 @@ def product_keyboard(product_id, media_count=1, media_index=0, in_cart=False, ba
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def product_action_keyboard(product_id, in_cart=False, back_to_cart=False, user_id=None):
+    site_button = InlineKeyboardButton(text=tr(user_id, "site"), url=product_site_link(product_id).replace("&amp;", "&"))
+    rows = [[site_button]]
+    if in_cart:
+        rows.append([
+            InlineKeyboardButton(text=tr(user_id, "in_cart"), callback_data="cart_view"),
+            InlineKeyboardButton(text=tr(user_id, "remove_selection"), callback_data=f"cart_remove:{product_id}"),
+        ])
+        if back_to_cart:
+            rows.append([InlineKeyboardButton(text=tr(user_id, "back_to_cart"), callback_data="cart_view")])
+    else:
+        rows.append([InlineKeyboardButton(text=tr(user_id, "add_to_cart"), callback_data=f"cart_add:{product_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def keyboard_media_index(reply_markup, media_count=1):
     total = max(int(media_count or 1), 1)
     if not reply_markup:
@@ -3727,35 +3742,21 @@ def rich_product_detail_html(product, media_items, user_id=None):
     return f"<h3>{name}</h3>\n<p>{'<br/>'.join(lines)}</p>"
 
 
-def build_rich_product_media(media_items):
+def build_rich_product_media_tags(media_items):
     media_tags = []
-    rich_media = []
-    for index, (url, media_type) in enumerate(media_items[:MAX_PRODUCT_MEDIA]):
-        media_id = f"product_media_{index}"
+    for url, media_type in media_items[:MAX_PRODUCT_MEDIA]:
+        escaped_url = html.escape(url, quote=True)
         if media_type == "photo":
-            media_tags.append(f'<img src="tg://photo?id={media_id}"/>')
-            rich_media.append(
-                {"id": media_id, "media": {"type": "photo", "media": url}}
-            )
+            media_tags.append(f'<img src="{escaped_url}"/>')
         elif media_type == "video":
-            media_tags.append(f'<video src="tg://video?id={media_id}"></video>')
-            rich_media.append(
-                {
-                    "id": media_id,
-                    "media": {
-                        "type": "video",
-                        "media": url,
-                        "supports_streaming": True,
-                    },
-                }
-            )
-    return "".join(media_tags), rich_media
+            media_tags.append(f'<video src="{escaped_url}"></video>')
+    return "".join(media_tags)
 
 
 def build_rich_product_html(product, media_items, in_cart=False, back_to_cart=False, user_id=None):
     caption = rich_product_detail_html(product, media_items, user_id=user_id)
-    media_tags, _ = build_rich_product_media(media_items)
-    slideshow = f"<tg-slideshow>{''.join(media_tags)}</tg-slideshow>" if media_tags else ""
+    media_tags = build_rich_product_media_tags(media_items)
+    slideshow = f"<tg-slideshow>{media_tags}</tg-slideshow>" if media_tags else ""
     buttons = rich_message_button_rows(
         product["product_id"],
         in_cart=in_cart,
@@ -3788,7 +3789,9 @@ async def send_telegram_api(method, payload):
 
 
 async def send_rich_product_card(message: Message, product, media_items, in_cart=False, back_to_cart=False, user_id=None):
-    _, rich_media = build_rich_product_media(media_items)
+    if not media_items:
+        logger.warning("Rich Message skipped for product_id=%s: no media URLs", product.get("product_id"))
+        return False
     rich_html = build_rich_product_html(
         product,
         media_items,
@@ -3803,8 +3806,6 @@ async def send_rich_product_card(message: Message, product, media_items, in_cart
             "skip_entity_detection": True,
         },
     }
-    if rich_media:
-        payload["rich_message"]["media"] = rich_media
     ok, data = await send_telegram_api("sendRichMessage", payload)
     if not ok:
         logger.warning(
@@ -3833,6 +3834,7 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
     caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=callback.from_user.id)
     in_cart = in_cart or user_has_cart_item(callback.from_user.id, product_id)
     markup = product_keyboard(product_id, len(media_items) or 1, 0, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
+    fallback_markup = product_action_keyboard(product_id, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
 
     if await send_rich_product_card(
         callback.message,
@@ -3858,12 +3860,12 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
                 photo=BufferedInputFile(data, filename=filename),
                 caption=caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=markup,
+                reply_markup=fallback_markup,
             )
             await send_product_description_messages(callback.message, description_messages)
             await callback.message.delete()
         except Exception:
-            await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
             await send_product_description_messages(callback.message, description_messages)
     elif public_media_type == "video":
         try:
@@ -3874,15 +3876,15 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
                 video=BufferedInputFile(data, filename=filename),
                 caption=caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=markup,
+                reply_markup=fallback_markup,
             )
             await send_product_description_messages(callback.message, description_messages)
             await callback.message.delete()
         except Exception:
-            await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
             await send_product_description_messages(callback.message, description_messages)
     else:
-        await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+        await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
         await send_product_description_messages(callback.message, description_messages)
 
 
@@ -3896,6 +3898,7 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
     user_id = user_id or message.chat.id
     caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=user_id)
     inline_markup = product_keyboard(product_id, len(media_items) or 1, 0, user_id=user_id)
+    fallback_markup = product_action_keyboard(product_id, in_cart=user_has_cart_item(user_id, product_id), user_id=user_id)
     
     # Получаем состояние пользователя для определения правильной ReplyKeyboard
     state = USER_STATES.get(user_id, {})
@@ -3926,7 +3929,7 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
                 photo=BufferedInputFile(data, filename=filename),
                 caption=caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=inline_markup,
+                reply_markup=fallback_markup,
             )
             await send_product_description_messages(message, description_messages)
             return
@@ -3942,14 +3945,14 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
                 video=BufferedInputFile(data, filename=filename),
                 caption=caption,
                 parse_mode=ParseMode.HTML,
-                reply_markup=inline_markup,
+                reply_markup=fallback_markup,
             )
             await send_product_description_messages(message, description_messages)
             return
         except Exception:
             pass
 
-    await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=inline_markup)
+    await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
     await send_product_description_messages(message, description_messages)
 
 
@@ -3966,7 +3969,7 @@ async def prepare_product_card(product_id: int, user_id=None):
         has_media=public_media is not None,
         user_id=user_id,
     )
-    inline_markup = product_keyboard(product_id, len(media_items) or 1, 0, user_id=user_id)
+    inline_markup = product_action_keyboard(product_id, in_cart=user_has_cart_item(user_id, product_id), user_id=user_id)
 
     return {
         "product_id": product_id,
