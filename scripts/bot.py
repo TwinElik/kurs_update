@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import hashlib
 import html
 import json
@@ -9,7 +9,8 @@ import re
 import threading
 from contextlib import contextmanager
 from io import BytesIO
-from decimal import Decimal
+from html.parser import HTMLParser
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -69,7 +70,8 @@ REVIEW_FALLBACK_PATH = Path(__file__).with_name("order_reviews.json")
 MANAGER_ACCESS_PATH = Path(__file__).with_name("manager_access.json")
 ADMIN_MANAGER_IDS = {"5216485765", "995855560"}
 HTTP_SESSION = None
-PAGE_SIZE = 5
+PAGE_SIZE = 3
+MAX_PRODUCT_MEDIA = 3
 TG_ORDER_STATUSES = {
     "new": "Ожидание",
     "pending": "Ожидание",
@@ -123,6 +125,22 @@ REGIONS = [
     "Хорезмская область",
 ]
 CART_TTL_MINUTES = 7
+FREE_DELIVERY_WEIGHT = Decimal("4")
+DELIVERY_PRICE = Decimal("45000")
+
+PICKUP_ADDRESS_RU = "г. Ташкент, ул. Амира Темура 40Н"
+PICKUP_ADDRESS_UZ = "Toshkent shahri, Amir Temur ko'chasi 40N"
+# Координаты точки на Амира Темура 40Н. При необходимости можно заменить на точный pin магазина.
+PICKUP_LATITUDE = 41.3193
+PICKUP_LONGITUDE = 69.2833
+
+DELIVERY_METHOD_TEXTS = {
+    "🚚 Доставка",
+    "🚚 Yetkazib berish",
+    "🏬 Самовывоз",
+    "🏬 Olib ketish",
+}
+
 CART_TEXT = "🛒 Корзина"
 MY_ORDERS_TEXT = "📦 Заказы"
 MANAGER_ORDERS_TEXT = "📋 Заказы"
@@ -138,6 +156,10 @@ LANG_TEXTS = {
         "orders": "📦 Заказы",
         "contacts": "☎️ Связаться с нами",
         "language": "🌐 Язык",
+        "article_search": "🔎 Поиск по артикулу",
+        "article_search_prompt": "Введите артикул товара:",
+        "article_search_not_found": "Товар с артикулом {model} не найден.",
+        "article_search_many": "Найдено товаров: {count}",
         "catalog": "Каталог:",
         "catalog_placeholder": "Выберите категорию",
         "menu_placeholder": "Выберите раздел",
@@ -201,6 +223,10 @@ LANG_TEXTS = {
         "no_media": "Фото/видео не найдено.",
         "enter_name": "Для оформления заявки введите ваше имя, пожалуйста.",
         "send_own_contact": "Отправьте, пожалуйста, свой контакт через кнопку ниже.",
+        "select_delivery_method": "Как вы хотите получить заказ?",
+        "delivery_method_delivery": "🚚 Доставка",
+        "delivery_method_pickup": "🏬 Самовывоз",
+        "pickup_info": "🏬 <b>Самовывоз</b>\nАдрес: {address}\nПосле подтверждения заказа менеджером вы сможете забрать изделие в магазине.",
         "send_location": "Укажите, пожалуйста, адрес доставки: отправьте геопозицию в Telegram.",
         "send_location_again": "Отправьте, пожалуйста, геопозицию Telegram, чтобы мы смогли оформить доставку.",
         "location_sent": "Геопозиция передана.",
@@ -235,6 +261,10 @@ LANG_TEXTS = {
         "orders": "📦 Buyurtmalar",
         "contacts": "☎️ Biz bilan bog'lanish",
         "language": "🌐 Til",
+        "article_search": "🔎 Artikul bo'yicha qidirish",
+        "article_search_prompt": "Mahsulot artikulini kiriting:",
+        "article_search_not_found": "{model} artikulli mahsulot topilmadi.",
+        "article_search_many": "Topilgan mahsulotlar: {count}",
         "catalog": "Katalog:",
         "catalog_placeholder": "Kategoriyani tanlang",
         "menu_placeholder": "Bo'limni tanlang",
@@ -298,6 +328,10 @@ LANG_TEXTS = {
         "no_media": "Foto/video topilmadi.",
         "enter_name": "Buyurtmani rasmiylashtirish uchun ismingizni kiriting.",
         "send_own_contact": "Iltimos, quyidagi tugma orqali o'z kontaktingizni yuboring.",
+        "select_delivery_method": "Buyurtmani qanday olishni xohlaysiz?",
+        "delivery_method_delivery": "🚚 Yetkazib berish",
+        "delivery_method_pickup": "🏬 Olib ketish",
+        "pickup_info": "🏬 <b>Olib ketish</b>\nManzil: {address}\nMenejer buyurtmani tasdiqlagandan so'ng mahsulotni do'kondan olib ketishingiz mumkin.",
         "send_location": "Yetkazib berish manzilini ko'rsating: Telegram orqali geolokatsiya yuboring.",
         "send_location_again": "Yetkazib berishni rasmiylashtirish uchun Telegram geolokatsiyasini yuboring.",
         "location_sent": "Geolokatsiya yuborildi.",
@@ -423,13 +457,13 @@ USER_LANGS_PATH = Path(__file__).with_name("user_langs.json")
 CATEGORY_CONFIG = {
     "sale": {"title": "Скидки", "category_id": 253, "filters": [], "sale": True},
     "watch": {"title": "Часы", "category_id": 266, "filters": ["brand", "mechanism", "gender", "dial"]},
-    "ring": {"title": "Кольца", "category_id": 59, "filters": ["gender", "sample", "metal"]},
+    "ring": {"title": "Кольца", "category_id": 59, "filters": ["gender", "size", "sample", "metal"]},
     "earring": {"title": "Серьги", "category_id": 107, "filters": ["gender", "sample", "metal"]},
     "chain": {"title": "Цепочки", "category_id": 229, "filters": ["gender", "length", "sample", "metal"]},
-    "bracelet": {"title": "Браслеты", "category_id": 69, "filters": ["gender", "sample", "metal"]},
+    "bracelet": {"title": "Браслеты", "category_id": 69, "filters": ["gender", "size", "sample", "metal"]},
     "pendant": {"title": "Подвески", "category_id": 175, "filters": ["gender", "sample", "stone"]},
     "necklace": {"title": "Колье", "category_id": 230, "filters": ["gender", "sample", "metal"]},
-    "set": {"title": "Комплекты", "category_id": 111, "filters": ["gender", "sample", "metal", "stone"]},
+    "set": {"title": "Комплекты", "category_id": 111, "filters": ["gender", "size", "sample", "metal", "stone"]},
     "case": {"title": "Футляры", "category_id": 223, "filters": []},
 }
 
@@ -486,6 +520,7 @@ CONTACT_TEXTS = {"☎️ Связаться с нами", "Связаться с
 CART_TEXTS = {CART_TEXT, "🛒 Savat", "Savat"}
 ORDER_TEXTS = {MY_ORDERS_TEXT, "📦 Buyurtmalar", "Buyurtmalar"}
 LANGUAGE_TEXTS = {"🌐 Язык", "Язык", "🌐 Til", "Til"}
+ARTICLE_SEARCH_TEXTS = {"🔎 Поиск по артикулу", "Поиск по артикулу", "🔎 Artikul bo\'yicha qidirish", "Artikul bo\'yicha qidirish"}
 HOME_TEXTS = {"🏠 Главная", "Главная", "🏠 Asosiy", "Asosiy"}
 BACK_TEXTS = {"⬅️ Вернуться", "Вернуться", "⬅️ Ortga", "Ortga"}
 SALE_TEXTS = {"🏷️ Скидки", "Скидки", "🏷️ Chegirmalar", "Chegirmalar"}
@@ -501,6 +536,7 @@ FILTER_CONFIG = {
     "mechanism": {"title": "Тип механизма", "type": "manual", "values": [("mech", "Механические"), ("auto", "Автоматические")]},
     "gender": {"title": "Кому", "type": "filter_group", "group": "Пол"},
     "dial": {"title": "Циферблат (мм)", "type": "manual", "values": [("36", "36"), ("40", "40"), ("44", "44")]},
+    "size": {"title": "Размер", "type": "filter_group", "group": "Размер"},
     "sample": {"title": "Проба", "type": "filter_group", "group": "Проба"},
     "metal": {"title": "Металл", "type": "manual", "values": [("gold", "Золото"), ("silver", "Серебро")]},
     "length": {"title": "Длина", "type": "manual", "values": []},
@@ -512,6 +548,7 @@ FILTER_TITLE_I18N = {
         "mechanism": "Тип механизма",
         "gender": "Кому",
         "dial": "Циферблат (мм)",
+        "size": "Размер изделия",
         "sample": "Проба",
         "metal": "Металл",
         "length": "Длина",
@@ -522,6 +559,7 @@ FILTER_TITLE_I18N = {
         "mechanism": "Mexanizm turi",
         "gender": "Kim uchun",
         "dial": "Siferblat (mm)",
+        "size": "Buyum o'lchami",
         "sample": "Proba",
         "metal": "Metall",
         "length": "Uzunlik",
@@ -720,6 +758,14 @@ def ensure_tg_orders_table():
             db_execute("ALTER TABLE tg_orders ADD COLUMN delivery_lat DECIMAL(10, 8) NULL AFTER region")
         if "delivery_lng" not in columns:
             db_execute("ALTER TABLE tg_orders ADD COLUMN delivery_lng DECIMAL(11, 8) NULL AFTER delivery_lat")
+        if "order_weight" not in columns:
+            db_execute("ALTER TABLE tg_orders ADD COLUMN order_weight DECIMAL(10, 3) NOT NULL DEFAULT 0 AFTER delivery_lng")
+        if "delivery_price" not in columns:
+            db_execute("ALTER TABLE tg_orders ADD COLUMN delivery_price DECIMAL(15, 2) NOT NULL DEFAULT 0 AFTER order_weight")
+        if "delivery_method" not in columns:
+            db_execute("ALTER TABLE tg_orders ADD COLUMN delivery_method VARCHAR(20) NOT NULL DEFAULT 'delivery' AFTER delivery_price")
+        if "cancel_reason" not in columns:
+            db_execute("ALTER TABLE tg_orders ADD COLUMN cancel_reason TEXT NULL AFTER delivery_method")
         if "customer_name" not in columns:
             db_execute("ALTER TABLE tg_orders ADD COLUMN customer_name VARCHAR(255) NOT NULL DEFAULT '' AFTER last_name")
         if "client_review" not in columns:
@@ -1660,6 +1706,7 @@ def main_menu(user_id=None):
     return build_reply_keyboard([
         [KeyboardButton(text=tr(user_id, "buy")), KeyboardButton(text=tr(user_id, "sell"))],
         [KeyboardButton(text=tr(user_id, "cart")), KeyboardButton(text=tr(user_id, "orders"))],
+        [KeyboardButton(text=tr(user_id, "article_search"))],
         [KeyboardButton(text=tr(user_id, "contacts"))],
         [KeyboardButton(text=tr(user_id, "language"))],
     ])
@@ -1772,9 +1819,9 @@ def search_nav_keyboard(user_id, category_key, offset, has_next):
     rows = []
     nav = []
     if offset > 0:
-        nav.append(InlineKeyboardButton(text=tr(user_id, "back"), callback_data=f"search:{category_key}:{max(offset - 5, 0)}"))
+        nav.append(InlineKeyboardButton(text=tr(user_id, "back"), callback_data=f"search:{category_key}:{max(offset - PAGE_SIZE, 0)}"))
     if has_next:
-        nav.append(InlineKeyboardButton(text=tr(user_id, "next"), callback_data=f"search:{category_key}:{offset + 5}"))
+        nav.append(InlineKeyboardButton(text=tr(user_id, "next"), callback_data=f"search:{category_key}:{offset + PAGE_SIZE}"))
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton(text=tr(user_id, "filters"), callback_data="fback")])
@@ -1842,7 +1889,7 @@ def category_keyboard(categories):
 
 def products_keyboard(products, category_id=None, offset=0):
     rows = []
-    for product in products:
+    for product in products[:PAGE_SIZE]:
         rows.append(
             [
                 InlineKeyboardButton(
@@ -1857,15 +1904,15 @@ def products_keyboard(products, category_id=None, offset=0):
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="Показать 5 карточками",
+                    text=f"Показать {PAGE_SIZE} карточками",
                     callback_data=f"catcards:{category_id}:{offset}",
                 )
             ]
         )
     if category_id is not None and offset > 0:
-        nav.append(InlineKeyboardButton(text="Назад", callback_data=f"cat:{category_id}:{max(offset - 5, 0)}"))
-    if category_id is not None and len(products) == 5:
-        nav.append(InlineKeyboardButton(text="Ещё", callback_data=f"cat:{category_id}:{offset + 5}"))
+        nav.append(InlineKeyboardButton(text="Назад", callback_data=f"cat:{category_id}:{max(offset - PAGE_SIZE, 0)}"))
+    if category_id is not None and len(products) > PAGE_SIZE:
+        nav.append(InlineKeyboardButton(text="Ещё", callback_data=f"cat:{category_id}:{offset + PAGE_SIZE}"))
     if nav:
         rows.append(nav)
 
@@ -1878,14 +1925,14 @@ def cards_nav_keyboard(kind, offset, has_next, category_id=None):
     nav = []
     if offset > 0:
         if kind == "new":
-            nav.append(InlineKeyboardButton(text="Назад", callback_data=f"newcards:{max(offset - 5, 0)}"))
+            nav.append(InlineKeyboardButton(text="Назад", callback_data=f"newcards:{max(offset - PAGE_SIZE, 0)}"))
         else:
-            nav.append(InlineKeyboardButton(text="Назад", callback_data=f"catcards:{category_id}:{max(offset - 5, 0)}"))
+            nav.append(InlineKeyboardButton(text="Назад", callback_data=f"catcards:{category_id}:{max(offset - PAGE_SIZE, 0)}"))
     if has_next:
         if kind == "new":
-            nav.append(InlineKeyboardButton(text="Далее", callback_data=f"newcards:{offset + 5}"))
+            nav.append(InlineKeyboardButton(text="Далее", callback_data=f"newcards:{offset + PAGE_SIZE}"))
         else:
-            nav.append(InlineKeyboardButton(text="Далее", callback_data=f"catcards:{category_id}:{offset + 5}"))
+            nav.append(InlineKeyboardButton(text="Далее", callback_data=f"catcards:{category_id}:{offset + PAGE_SIZE}"))
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton(text="Категории", callback_data="cats")])
@@ -1964,6 +2011,27 @@ def contact_request_keyboard(user_id=None):
             [KeyboardButton(text=tr(user_id, "back")), KeyboardButton(text=tr(user_id, "home"))],
         ]
     )
+
+
+def delivery_method_keyboard(user_id=None):
+    return build_reply_keyboard(
+        [
+            [
+                KeyboardButton(text=tr(user_id, "delivery_method_delivery")),
+                KeyboardButton(text=tr(user_id, "delivery_method_pickup")),
+            ],
+            [KeyboardButton(text=tr(user_id, "back")), KeyboardButton(text=tr(user_id, "home"))],
+        ]
+    )
+
+
+def delivery_method_from_text(value):
+    value = str(value or "").strip()
+    if value in {"🏬 Самовывоз", "🏬 Olib ketish"}:
+        return "pickup"
+    if value in {"🚚 Доставка", "🚚 Yetkazib berish"}:
+        return "delivery"
+    return None
 
 
 def region_keyboard(user_id=None):
@@ -2104,9 +2172,15 @@ def cart_keyboard(items, user_id=None):
     rows = []
     for item in items:
         name = html.unescape(item["name"])
-        short_name = name if len(name) <= 20 else name[:18] + ".."
+        # Оставляем место под отдельную кнопку удаления справа.
+        short_name = name if len(name) <= 17 else name[:15] + ".."
         label = f"{short_name} — {format_price(item['price'])}"
-        rows.append([InlineKeyboardButton(text=label[:64], callback_data=f"cart_prod:{item['product_id']}")])
+        rows.append(
+            [
+                InlineKeyboardButton(text=label[:54], callback_data=f"cart_prod:{item['product_id']}"),
+                InlineKeyboardButton(text="✖️", callback_data=f"cart_remove:{item['product_id']}"),
+            ]
+        )
     if items:
         rows.append([InlineKeyboardButton(text=tr(user_id, "checkout"), callback_data="cart_checkout")])
         rows.append([InlineKeyboardButton(text=tr(user_id, "back"), callback_data="home")])
@@ -2222,6 +2296,202 @@ def clean_description(value, limit=500):
     return html.escape(text[:limit])
 
 
+class TelegramDescriptionHTMLParser(HTMLParser):
+    BLOCK_TAGS = {"p", "div", "section", "article", "ul", "ol", "table", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}
+    FORMAT_TAGS = {
+        "b": "b",
+        "strong": "b",
+        "i": "i",
+        "em": "i",
+        "u": "u",
+        "ins": "u",
+        "s": "s",
+        "strike": "s",
+        "del": "s",
+        "code": "code",
+    }
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.open_tags = []
+
+    def _newline(self):
+        if not self.parts:
+            return
+        tail = "".join(self.parts[-2:])
+        if not tail.endswith("\n"):
+            self.parts.append("\n")
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag == "br":
+            self.parts.append("\n")
+            return
+        if tag in self.BLOCK_TAGS:
+            self._newline()
+            return
+        if tag == "li":
+            self._newline()
+            self.parts.append("• ")
+            return
+        mapped = self.FORMAT_TAGS.get(tag)
+        if mapped:
+            self.parts.append(f"<{mapped}>")
+            self.open_tags.append((tag, mapped))
+            return
+        if tag == "a":
+            href = dict(attrs).get("href", "")
+            href = html.unescape(str(href or "")).strip()
+            if href.startswith(("http://", "https://", "tg://", "mailto:")):
+                self.parts.append(f'<a href="{html.escape(href, quote=True)}">')
+                self.open_tags.append((tag, "a"))
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in self.BLOCK_TAGS or tag == "li":
+            self._newline()
+            return
+        for idx in range(len(self.open_tags) - 1, -1, -1):
+            source_tag, mapped = self.open_tags[idx]
+            if source_tag == tag:
+                for _, close_tag in reversed(self.open_tags[idx:]):
+                    self.parts.append(f"</{close_tag}>")
+                del self.open_tags[idx:]
+                return
+
+    def handle_data(self, data):
+        if data:
+            self.parts.append(html.escape(data.replace("\xa0", " ")))
+
+    def get_html(self):
+        for _, mapped in reversed(self.open_tags):
+            self.parts.append(f"</{mapped}>")
+        self.open_tags.clear()
+        result = "".join(self.parts)
+        result = re.sub(r"[ \t]+", " ", result)
+        result = re.sub(r" *\n *", "\n", result)
+        result = re.sub(r"\n{3,}", "\n\n", result)
+        return result.strip()
+
+
+def decode_product_html(value):
+    raw = str(value or "")
+    # OpenCart/Journal descriptions can sometimes be HTML-escaped more than once.
+    for _ in range(3):
+        decoded = html.unescape(raw)
+        if decoded == raw:
+            break
+        raw = decoded
+    return raw
+
+
+def product_description_telegram_html(value):
+    raw = decode_product_html(value)
+    if not raw.strip():
+        return ""
+    parser = TelegramDescriptionHTMLParser()
+    try:
+        parser.feed(raw)
+        parser.close()
+        return parser.get_html()
+    except Exception:
+        # Safe fallback: never expose raw OpenCart tags to Telegram.
+        text = re.sub(r"<br\s*/?>", "\n", raw, flags=re.IGNORECASE)
+        text = re.sub(r"</(?:p|div|li|ul|ol|h[1-6]|section|article)>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", "", text)
+        text = html.unescape(text).replace("\xa0", " ")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        return html.escape(text)
+
+
+def telegram_html_visible_text(value):
+    raw = str(value or "")
+    raw = re.sub(r"<tg-emoji\b[^>]*>(.*?)</tg-emoji>", r"\1", raw, flags=re.IGNORECASE | re.DOTALL)
+    raw = re.sub(r"<[^>]+>", "", raw)
+    return html.unescape(raw)
+
+
+def telegram_html_visible_length(value):
+    return len(telegram_html_visible_text(value))
+
+
+def product_description_block(product):
+    description = product_description_telegram_html(product.get("description") or "")
+    if not description:
+        return ""
+    return f"<b>Описание:</b>\n<blockquote expandable>{description}</blockquote>"
+
+
+def product_caption_payload(product, has_media=True, user_id=None):
+    base = product_text(product, has_media=has_media, user_id=user_id)
+    block = product_description_block(product)
+    if not block:
+        return base, []
+
+    combined = f"{base}\n\n{block}"
+    limit = 1024 if has_media else 4096
+    if telegram_html_visible_length(combined) <= limit:
+        return combined, []
+
+    # Most descriptions fit into a normal Telegram text message (4096 chars).
+    if telegram_html_visible_length(block) <= 4096:
+        return base, [block]
+
+    # Very large descriptions: split safely as plain text rather than sending invalid/truncated HTML.
+    plain = telegram_html_visible_text(product_description_telegram_html(product.get("description") or ""))
+    chunks = []
+    max_chars = 3700
+    while plain:
+        if len(plain) <= max_chars:
+            chunk, plain = plain, ""
+        else:
+            cut = plain.rfind("\n", 0, max_chars)
+            if cut < max_chars // 2:
+                cut = plain.rfind(" ", 0, max_chars)
+            if cut <= 0:
+                cut = max_chars
+            chunk, plain = plain[:cut], plain[cut:]
+        chunk = chunk.strip()
+        plain = plain.lstrip()
+        if chunk:
+            chunks.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
+    return base, chunks
+
+
+def product_description_messages_payload(product):
+    block = product_description_block(product)
+    if not block:
+        return []
+
+    if telegram_html_visible_length(block) <= 4096:
+        return [block]
+
+    plain = telegram_html_visible_text(product_description_telegram_html(product.get("description") or ""))
+    chunks = []
+    max_chars = 3700
+    while plain:
+        if len(plain) <= max_chars:
+            chunk, plain = plain, ""
+        else:
+            cut = plain.rfind("\n", 0, max_chars)
+            if cut < max_chars // 2:
+                cut = plain.rfind(" ", 0, max_chars)
+            if cut <= 0:
+                cut = max_chars
+            chunk, plain = plain[:cut], plain[cut:]
+        chunk = chunk.strip()
+        plain = plain.lstrip()
+        if chunk:
+            chunks.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
+    return chunks
+
+
+async def send_product_description_messages(message: Message, messages):
+    for text in messages or []:
+        await message.answer(text, parse_mode=ParseMode.HTML)
+
 def display_filter_name(filter_key, raw_name):
     name = html.unescape(str(raw_name)).strip()
     if filter_key == "sample":
@@ -2229,6 +2499,28 @@ def display_filter_name(filter_key, raw_name):
             name = name.replace(token, "")
         name = name.strip()
     return name
+
+
+def rounded_size_label(raw_name):
+    text = html.unescape(str(raw_name or "")).strip().replace(",", ".")
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    if not match:
+        return ""
+    try:
+        value = Decimal(match.group(0))
+        rounded = (value * Decimal("2")).quantize(Decimal("1"), rounding=ROUND_HALF_UP) / Decimal("2")
+    except Exception:
+        return ""
+    if rounded == rounded.to_integral():
+        return str(int(rounded))
+    return f"{rounded:.1f}"
+
+
+def size_group_token(raw_name):
+    label = rounded_size_label(raw_name)
+    if not label:
+        return "", ""
+    return "size_" + label.replace(".", "_"), label
 
 
 def sample_metal_key(raw_name):
@@ -2293,6 +2585,25 @@ def get_filter_values(filter_key, selected_metals=None):
     )
     values = []
     selected_metals = set(selected_metals or [])
+
+    if filter_key == "size":
+        grouped = {}
+        fallback = []
+        for row in rows:
+            token, label = size_group_token(row["name"])
+            if token:
+                grouped[token] = label
+            else:
+                fallback.append((str(row["filter_id"]), display_filter_name(filter_key, row["name"])))
+        values.extend(
+            sorted(
+                grouped.items(),
+                key=lambda item: Decimal(item[1]),
+            )
+        )
+        values.extend(fallback)
+        return values
+
     for row in rows:
         raw_name = row["name"]
         if filter_key == "sample":
@@ -2304,6 +2615,35 @@ def get_filter_values(filter_key, selected_metals=None):
             label = display_filter_name(filter_key, raw_name)
         values.append((str(row["filter_id"]), label))
     return values
+
+
+def resolve_size_filter_ids(selected_values):
+    selected_values = {str(value) for value in (selected_values or [])}
+    if not selected_values:
+        return []
+
+    rows = db_query(
+        """
+        SELECT f.filter_id, fd.name
+        FROM ocoe_filter_group_description fgd
+        JOIN ocoe_filter f ON f.filter_group_id = fgd.filter_group_id
+        JOIN ocoe_filter_description fd ON fd.filter_id = f.filter_id
+        WHERE fgd.language_id = %s
+          AND fd.language_id = %s
+          AND fgd.name = %s
+        ORDER BY f.sort_order, fd.name
+        """,
+        (LANGUAGE_ID, LANGUAGE_ID, FILTER_CONFIG["size"]["group"]),
+    )
+
+    resolved = []
+    for row in rows:
+        token, _ = size_group_token(row["name"])
+        if token and token in selected_values:
+            resolved.append(str(row["filter_id"]))
+        elif not token and str(row["filter_id"]) in selected_values:
+            resolved.append(str(row["filter_id"]))
+    return resolved
 
 
 def get_filter_label(filter_key, value_id):
@@ -2347,6 +2687,34 @@ def get_product_filter_map(product_id):
 def first_filter_value(filter_map, group_name):
     values = filter_map.get(group_name) or []
     return values[0].strip() if values else ""
+
+
+def find_country_filter_value(filter_map):
+    for exact_name in ("Страна", "Страна производства", "Производство"):
+        value = first_filter_value(filter_map, exact_name)
+        if value:
+            return value
+    for group_name, values in filter_map.items():
+        normalized = html.unescape(str(group_name or "")).strip().lower()
+        if ("стран" in normalized or "производ" in normalized) and values:
+            value = str(values[0] or "").strip()
+            if value:
+                return value
+    return ""
+
+
+def find_size_filter_value(filter_map):
+    for exact_name in ("Размер", "Размер изделия"):
+        value = first_filter_value(filter_map, exact_name)
+        if value:
+            return value
+    for group_name, values in filter_map.items():
+        normalized = html.unescape(str(group_name or "")).strip().lower()
+        if "размер" in normalized and values:
+            value = str(values[0] or "").strip()
+            if value:
+                return value
+    return ""
 
 
 def infer_metal(product, filter_map):
@@ -2444,9 +2812,10 @@ def detail_text(product, user_id=None):
     weight = Decimal(str(product.get("weight") or 0))
     quantity = int(product.get("quantity") or 0)
     filter_map = get_product_filter_map(product["product_id"])
+    size = find_size_filter_value(filter_map)
     sample = display_filter_name("sample", first_filter_value(filter_map, "Проба"))
     metal = infer_metal(product, filter_map)
-    country = first_filter_value(filter_map, "Страна")
+    country = find_country_filter_value(filter_map)
     flag = country_flag_html(country)
 
     lines = [
@@ -2457,6 +2826,9 @@ def detail_text(product, user_id=None):
     if weight > 0:
         unit = "g" if user_lang(user_id) == "uz" else "г"
         lines.append(f"<b>{tr(user_id, 'weight')}:</b> {weight.normalize()} {unit}")
+    if size:
+        size_title = "O'lcham" if user_lang(user_id) == "uz" else "Размер"
+        lines.append(f"<b>{size_title}:</b> {html.escape(str(size))}")
     if sample:
         lines.append(f"<b>{tr(user_id, 'sample')}:</b> {html.escape(sample)}")
     if metal:
@@ -2465,8 +2837,11 @@ def detail_text(product, user_id=None):
     in_stock_for_user = quantity > 0 or user_has_active_reserve(user_id, product["product_id"])
     stock_text = f"{IN_STOCK_EMOJI_HTML} {tr(user_id, 'in_stock')}" if in_stock_for_user else f"{OUT_OF_STOCK_EMOJI_HTML} {tr(user_id, 'out_of_stock')}"
     lines.append(f"<b>{tr(user_id, 'status')}:</b> {stock_text}")
-    if flag:
-        lines.append(f"<b>{tr(user_id, 'production')}:</b> {flag}")
+    if country:
+        country_text = html.escape(country)
+        if flag:
+            country_text = f"{flag} {country_text}"
+        lines.append(f"<b>{tr(user_id, 'production')}:</b> {country_text}")
     if model:
         lines.append(f"<b>{tr(user_id, 'model')}:</b> <code>{model}</code>")
     return "\n".join(lines)
@@ -2628,9 +3003,9 @@ def get_products_for_category(category_id, offset=0):
           AND pd.language_id = %s
           AND (p2c.category_id = %s OR child.parent_id = %s)
         ORDER BY p.date_added DESC, p.product_id DESC
-        LIMIT 5 OFFSET %s
+        LIMIT %s OFFSET %s
         """,
-        (LANGUAGE_ID, category_id, category_id, offset),
+        (LANGUAGE_ID, category_id, category_id, PAGE_SIZE + 1, offset),
     )
 
 
@@ -2643,9 +3018,9 @@ def get_new_products():
         WHERE p.status = 1
           AND pd.language_id = %s
         ORDER BY p.date_added DESC, p.product_id DESC
-        LIMIT 5
+        LIMIT %s
         """,
-        (LANGUAGE_ID,),
+        (LANGUAGE_ID, PAGE_SIZE + 1),
     )
 
 
@@ -2658,9 +3033,9 @@ def get_new_products_page(offset=0):
         WHERE p.status = 1
           AND pd.language_id = %s
         ORDER BY p.date_added DESC, p.product_id DESC
-        LIMIT 6 OFFSET %s
+        LIMIT %s OFFSET %s
         """,
-        (LANGUAGE_ID, offset),
+        (LANGUAGE_ID, PAGE_SIZE + 1, offset),
     )
 
 
@@ -2707,7 +3082,10 @@ def build_filtered_query(user_id, category_key, offset=0, count_only=False):
             continue
         config = FILTER_CONFIG[filter_key]
         if config["type"] == "filter_group":
-            placeholders = ",".join(["%s"] * len(values))
+            filter_ids = resolve_size_filter_ids(values) if filter_key == "size" else list(values)
+            if not filter_ids:
+                continue
+            placeholders = ",".join(["%s"] * len(filter_ids))
             where.append(
                 f"""EXISTS (
                     SELECT 1 FROM ocoe_product_filter pf
@@ -2715,7 +3093,7 @@ def build_filtered_query(user_id, category_key, offset=0, count_only=False):
                       AND pf.filter_id IN ({placeholders})
                 )"""
             )
-            params.extend(list(values))
+            params.extend(filter_ids)
         elif filter_key == "brand":
             placeholders = ",".join(["%s"] * len(values))
             where.append(f"p.manufacturer_id IN ({placeholders})")
@@ -2753,7 +3131,8 @@ def build_filtered_query(user_id, category_key, offset=0, count_only=False):
     sql.append("WHERE " + " AND ".join(where))
     if not count_only:
         sql.append("ORDER BY (p.quantity > 0) DESC, p.date_added DESC, p.product_id DESC")
-        sql.append("LIMIT 6 OFFSET %s")
+        sql.append("LIMIT %s OFFSET %s")
+        params.append(PAGE_SIZE + 1)
         params.append(offset)
 
     return "\n".join(sql), params
@@ -2960,6 +3339,7 @@ def get_cart_items(user_id):
             pd.name,
             p.model,
             p.price,
+            p.weight,
             p.quantity,
             tci.reserved_quantity,
             tci.expires_at
@@ -2991,20 +3371,102 @@ def available_cart_items(user_id):
     ]
 
 
+def cart_delivery_totals(items, delivery_method="delivery"):
+    products_total = Decimal("0")
+    total_weight = Decimal("0")
+
+    for item in items:
+        available = int(item.get("quantity") or 0) > 0 or int(item.get("reserved_quantity") or 0) > 0
+        if not available:
+            continue
+        products_total += Decimal(str(item.get("price") or 0))
+        total_weight += Decimal(str(item.get("weight") or 0))
+
+    if delivery_method == "pickup":
+        delivery_price = Decimal("0")
+    else:
+        delivery_price = DELIVERY_PRICE if total_weight < FREE_DELIVERY_WEIGHT else Decimal("0")
+    grand_total = products_total + delivery_price
+    return products_total, total_weight, delivery_price, grand_total
+
+
+def format_weight_value(weight):
+    value = Decimal(str(weight or 0)).quantize(Decimal("0.001"))
+    text = format(value, "f").rstrip("0").rstrip(".")
+    return text or "0"
+
+
 def cart_text(items, user_id=None):
     if not items:
         return tr(user_id, "empty_cart")
+
     lines = [f"<b>{tr(user_id, 'cart_title')}</b>"]
-    total = Decimal("0")
-    for item in items:
-        available = int(item.get("quantity") or 0) > 0 or int(item.get("reserved_quantity") or 0) > 0
-        if available:
-            total += Decimal(str(item.get("price") or 0))
-    missing = [item for item in items if int(item.get("quantity") or 0) <= 0 and int(item.get("reserved_quantity") or 0) <= 0]
+    products_total, total_weight, delivery_price, grand_total = cart_delivery_totals(items)
+
+    missing = [
+        item for item in items
+        if int(item.get("quantity") or 0) <= 0 and int(item.get("reserved_quantity") or 0) <= 0
+    ]
     if missing:
         lines.append(f"{OUT_OF_STOCK_EMOJI_HTML} {tr(user_id, 'cart_missing')}")
-    lines.append(f"<b>{tr(user_id, 'total')}:</b> {format_price(total)}")
+
+    if user_lang(user_id) == "uz":
+        lines.append(f"<b>Mahsulotlar:</b> {format_price(products_total)}")
+        lines.append(f"<b>Umumiy vazn:</b> {format_weight_value(total_weight)} g")
+        if delivery_price > 0:
+            lines.append(f"<b>Yetkazib berish:</b> {format_price(delivery_price)}")
+            lines.append("🚚 4 g dan boshlab yetkazib berish bepul. 4 g dan kam buyurtma uchun — 45 000 so'm.")
+        else:
+            lines.append("<b>Yetkazib berish:</b> bepul")
+        lines.append("🏬 Olib ketish har doim bepul.")
+    else:
+        lines.append(f"<b>Товары:</b> {format_price(products_total)}")
+        lines.append(f"<b>Общий вес:</b> {format_weight_value(total_weight)} г")
+        if delivery_price > 0:
+            lines.append(f"<b>Доставка:</b> {format_price(delivery_price)}")
+            lines.append("🚚 При заказе от 4 г доставка бесплатная. Если общий вес меньше 4 г — доставка 45 000 сум.")
+        else:
+            lines.append("<b>Доставка:</b> бесплатно")
+        lines.append("🏬 Самовывоз всегда бесплатный.")
+
+    lines.append(f"<b>{tr(user_id, 'total')}:</b> {format_price(grand_total)}")
     return "\n".join(lines)
+
+
+
+def find_products_by_model(raw_model, limit=5):
+    model = " ".join(str(raw_model or "").strip().split())
+    if not model:
+        return []
+
+    exact = db_query(
+        """
+        SELECT p.product_id, p.model
+        FROM ocoe_product p
+        WHERE p.status = 1
+          AND LOWER(TRIM(p.model)) = LOWER(%s)
+        ORDER BY p.product_id DESC
+        LIMIT %s
+        """,
+        (model, int(limit)),
+    )
+    if exact:
+        return exact
+
+    return db_query(
+        """
+        SELECT p.product_id, p.model
+        FROM ocoe_product p
+        WHERE p.status = 1
+          AND p.model <> ''
+          AND LOWER(p.model) LIKE LOWER(%s)
+        ORDER BY
+            CASE WHEN LOWER(p.model) LIKE LOWER(%s) THEN 0 ELSE 1 END,
+            p.product_id DESC
+        LIMIT %s
+        """,
+        (f"%{model}%", f"{model}%", int(limit)),
+    )
 
 
 def get_product(product_id):
@@ -3084,8 +3546,8 @@ def local_media_path(product):
 
 def public_media_url(product):
     candidates = [
-        original_image_path(product.get("fallback_image") or ""),
         original_image_path(product.get("image") or ""),
+        original_image_path(product.get("fallback_image") or ""),
     ]
     for image in candidates:
         if is_placeholder_or_cache(image):
@@ -3103,15 +3565,24 @@ def public_media_urls_for_product(product_id):
     product = get_product(product_id)
     if not product:
         return []
-    media = []
-    for image in [product.get("fallback_image") or "", product.get("image") or ""]:
-        path = original_image_path(image)
+
+    def media_item(image):
+        path = original_image_path(image or "")
         if is_placeholder_or_cache(path):
-            continue
+            return None
         suffix = Path(path).suffix.lower()
-        if suffix in PHOTO_EXTENSIONS or suffix in VIDEO_EXTENSIONS:
-            media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
-            media.append((PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/"), media_type))
+        if suffix not in PHOTO_EXTENSIONS and suffix not in VIDEO_EXTENSIONS:
+            return None
+        media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
+        url = PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/")
+        return (url, media_type)
+
+    primary = media_item(product.get("image") or "")
+    extras = []
+
+    fallback = media_item(product.get("fallback_image") or "")
+    if fallback:
+        extras.append(fallback)
 
     rows = db_query(
         """
@@ -3123,22 +3594,37 @@ def public_media_urls_for_product(product_id):
         (product_id,),
     )
     for row in rows:
-        path = original_image_path(row["image"])
-        if is_placeholder_or_cache(path):
-            continue
-        suffix = Path(path).suffix.lower()
-        if suffix in PHOTO_EXTENSIONS or suffix in VIDEO_EXTENSIONS:
-            media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
-            media.append((PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/"), media_type))
+        item = media_item(row["image"])
+        if item:
+            extras.append(item)
 
-    unique = []
-    seen = set()
-    for url, media_type in media:
-        if url in seen:
+    # Remove duplicates while preserving the database order.
+    unique_extras = []
+    seen = {primary[0]} if primary else set()
+    for item in extras:
+        if item[0] in seen:
             continue
-        seen.add(url)
-        unique.append((url, media_type))
-    return sorted(unique, key=lambda item: 1 if item[1] == "video" else 0)
+        seen.add(item[0])
+        unique_extras.append(item)
+
+    if not primary:
+        return unique_extras[:MAX_PRODUCT_MEDIA]
+
+    if primary[1] == "photo":
+        # Main photo is already lightweight and should stay first.
+        return ([primary] + unique_extras)[:MAX_PRODUCT_MEDIA]
+
+    # Main media is a video. Telegram loads a photo faster, so show the first
+    # available additional photo first and put the primary video second.
+    first_photo_index = next(
+        (index for index, item in enumerate(unique_extras) if item[1] == "photo"),
+        None,
+    )
+    if first_photo_index is None:
+        return ([primary] + unique_extras)[:MAX_PRODUCT_MEDIA]
+
+    first_photo = unique_extras.pop(first_photo_index)
+    return ([first_photo, primary] + unique_extras)[:MAX_PRODUCT_MEDIA]
 
 
 async def get_http_session():
@@ -3181,6 +3667,161 @@ def product_text(product, has_media=True, user_id=None):
     return "\n".join(text)
 
 
+def rich_message_button_rows(product_id, in_cart=False, back_to_cart=False, user_id=None):
+    site_url = product_site_link(product_id).replace("&amp;", "&")
+    site_text = html.escape(tr(user_id, "site"))
+    rows = []
+    if in_cart:
+        rows.append(
+            f'<tg-button-row align="center"><tg-button type="callback_data" style="primary" data="cart_view">{html.escape(tr(user_id, "in_cart"))}</tg-button></tg-button-row>'
+        )
+        rows.append(
+            f'<tg-button-row align="center"><tg-button type="callback_data" style="danger" data="cart_remove:{product_id}">{html.escape(tr(user_id, "remove_selection"))}</tg-button></tg-button-row>'
+        )
+        if back_to_cart:
+            rows.append(
+                f'<tg-button-row align="center"><tg-button type="callback_data" style="link" data="cart_view">{html.escape(tr(user_id, "back_to_cart"))}</tg-button></tg-button-row>'
+            )
+    else:
+        rows.append(
+            f'<tg-button-row align="center"><tg-button type="callback_data" style="primary" data="cart_add:{product_id}">{html.escape(tr(user_id, "add_to_cart"))}</tg-button></tg-button-row>'
+        )
+    rows.append(
+        f'<tg-button-row align="center"><tg-button type="url" style="success" url="{html.escape(site_url, quote=True)}">{site_text}</tg-button></tg-button-row>'
+    )
+    return "\n".join(rows)
+
+
+def rich_product_detail_html(product, media_items, user_id=None):
+    name = html.escape(html.unescape(product["name"]))
+    model = html.escape(product.get("model") or "")
+    weight = Decimal(str(product.get("weight") or 0))
+    quantity = int(product.get("quantity") or 0)
+    filter_map = get_product_filter_map(product["product_id"])
+    size = find_size_filter_value(filter_map)
+    sample = display_filter_name("sample", first_filter_value(filter_map, "Проба"))
+    metal = infer_metal(product, filter_map)
+    country = find_country_filter_value(filter_map)
+
+    lines = [f'<b>{tr(user_id, "price")}:</b> <b>{format_price(product["price"])}</b>']
+    if weight > 0:
+        unit = "g" if user_lang(user_id) == "uz" else "г"
+        lines.append(f'<b>{tr(user_id, "weight")}:</b> {weight.normalize()} {unit}')
+    if size:
+        size_title = "O'lcham" if user_lang(user_id) == "uz" else "Размер"
+        lines.append(f"<b>{size_title}:</b> {html.escape(str(size))}")
+    if sample:
+        lines.append(f'<b>{tr(user_id, "sample")}:</b> {html.escape(sample)}')
+    if metal:
+        metal_text = {"Золото": "Tilla", "Серебро": "Kumush"}.get(metal, metal) if user_lang(user_id) == "uz" else metal
+        lines.append(f'<b>{tr(user_id, "metal")}:</b> {html.escape(metal_text)}')
+    in_stock_for_user = quantity > 0 or user_has_active_reserve(user_id, product["product_id"])
+    stock_text = tr(user_id, "in_stock") if in_stock_for_user else tr(user_id, "out_of_stock")
+    lines.append(f'<b>{tr(user_id, "status")}:</b> {html.escape(stock_text)}')
+    if country:
+        lines.append(f'<b>{tr(user_id, "production")}:</b> {html.escape(country)}')
+    if model:
+        lines.append(f'<b>{tr(user_id, "model")}:</b> <code>{model}</code>')
+    if not media_items:
+        lines.append(html.escape(tr(user_id, "no_media")))
+    return f"<h3>{name}</h3>\n<p>{'<br/>'.join(lines)}</p>"
+
+
+def build_rich_product_media(media_items):
+    media_tags = []
+    rich_media = []
+    for index, (url, media_type) in enumerate(media_items[:MAX_PRODUCT_MEDIA]):
+        media_id = f"product_media_{index}"
+        if media_type == "photo":
+            media_tags.append(f'<img src="tg://photo?id={media_id}"/>')
+            rich_media.append(
+                {"id": media_id, "media": {"type": "photo", "media": url}}
+            )
+        elif media_type == "video":
+            media_tags.append(f'<video src="tg://video?id={media_id}"></video>')
+            rich_media.append(
+                {
+                    "id": media_id,
+                    "media": {
+                        "type": "video",
+                        "media": url,
+                        "supports_streaming": True,
+                    },
+                }
+            )
+    return "".join(media_tags), rich_media
+
+
+def build_rich_product_html(product, media_items, in_cart=False, back_to_cart=False, user_id=None):
+    caption = rich_product_detail_html(product, media_items, user_id=user_id)
+    media_tags, _ = build_rich_product_media(media_items)
+    slideshow = f"<tg-slideshow>{''.join(media_tags)}</tg-slideshow>" if media_tags else ""
+    buttons = rich_message_button_rows(
+        product["product_id"],
+        in_cart=in_cart,
+        back_to_cart=back_to_cart,
+        user_id=user_id,
+    )
+    return "\n".join(part for part in (slideshow, caption, buttons) if part)
+
+
+async def send_telegram_api(method, payload):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    session = await get_http_session()
+    async with session.post(url, json=payload) as response:
+        status = response.status
+        raw_text = await response.text()
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError:
+        logger.warning("Telegram %s HTTP %s returned non-JSON response: %s", method, status, raw_text)
+        return False, {"ok": False, "description": raw_text, "http_status": status}
+    data["http_status"] = status
+    if not data.get("ok"):
+        logger.warning(
+            "Telegram %s failed. HTTP status=%s response=%s",
+            method,
+            status,
+            json.dumps(data, ensure_ascii=False),
+        )
+    return bool(data.get("ok")), data
+
+
+async def send_rich_product_card(message: Message, product, media_items, in_cart=False, back_to_cart=False, user_id=None):
+    _, rich_media = build_rich_product_media(media_items)
+    rich_html = build_rich_product_html(
+        product,
+        media_items,
+        in_cart=in_cart,
+        back_to_cart=back_to_cart,
+        user_id=user_id,
+    )
+    payload = {
+        "chat_id": message.chat.id,
+        "rich_message": {
+            "html": rich_html,
+            "skip_entity_detection": True,
+        },
+    }
+    if rich_media:
+        payload["rich_message"]["media"] = rich_media
+    ok, data = await send_telegram_api("sendRichMessage", payload)
+    if not ok:
+        logger.warning(
+            "Rich Message fallback for product_id=%s description=%s",
+            product.get("product_id"),
+            data.get("description"),
+        )
+        print(
+            "Rich Message fallback:",
+            f"product_id={product.get('product_id')}",
+            f"http_status={data.get('http_status')}",
+            f"description={data.get('description')}",
+            "response=" + json.dumps(data, ensure_ascii=False),
+        )
+    return ok
+
+
 async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, back_to_cart=False):
     product = get_product(product_id)
     if not product:
@@ -3189,9 +3830,24 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
 
     media_items = public_media_urls_for_product(product_id)
     public_media, public_media_type = media_items[0] if media_items else public_media_url(product)
-    caption = product_text(product, has_media=public_media is not None, user_id=callback.from_user.id)
+    caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=callback.from_user.id)
     in_cart = in_cart or user_has_cart_item(callback.from_user.id, product_id)
     markup = product_keyboard(product_id, len(media_items) or 1, 0, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
+
+    if await send_rich_product_card(
+        callback.message,
+        product,
+        media_items,
+        in_cart=in_cart,
+        back_to_cart=back_to_cart,
+        user_id=callback.from_user.id,
+    ):
+        await send_product_description_messages(callback.message, product_description_messages_payload(product))
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        return
 
     if public_media_type == "photo":
         try:
@@ -3200,13 +3856,15 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
                 raise ValueError(f"Unexpected content type: {content_type}")
             await callback.message.answer_photo(
                 photo=BufferedInputFile(data, filename=filename),
-                caption=caption[:1024],
+                caption=caption,
                 parse_mode=ParseMode.HTML,
                 reply_markup=markup,
             )
+            await send_product_description_messages(callback.message, description_messages)
             await callback.message.delete()
         except Exception:
             await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await send_product_description_messages(callback.message, description_messages)
     elif public_media_type == "video":
         try:
             data, filename, content_type = await download_public_media(public_media)
@@ -3214,15 +3872,18 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
                 raise ValueError(f"Unexpected content type: {content_type}")
             await callback.message.answer_video(
                 video=BufferedInputFile(data, filename=filename),
-                caption=caption[:1024],
+                caption=caption,
                 parse_mode=ParseMode.HTML,
                 reply_markup=markup,
             )
+            await send_product_description_messages(callback.message, description_messages)
             await callback.message.delete()
         except Exception:
             await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await send_product_description_messages(callback.message, description_messages)
     else:
         await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+        await send_product_description_messages(callback.message, description_messages)
 
 
 async def send_product_card(message: Message, product_id: int, user_id=None):
@@ -3233,7 +3894,7 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
     media_items = public_media_urls_for_product(product_id)
     public_media, public_media_type = media_items[0] if media_items else (None, None)
     user_id = user_id or message.chat.id
-    caption = product_text(product, has_media=public_media is not None, user_id=user_id)
+    caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=user_id)
     inline_markup = product_keyboard(product_id, len(media_items) or 1, 0, user_id=user_id)
     
     # Получаем состояние пользователя для определения правильной ReplyKeyboard
@@ -3246,6 +3907,16 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
     else:
         reply_kb = main_menu(user_id)
 
+    if await send_rich_product_card(
+        message,
+        product,
+        media_items,
+        in_cart=user_has_cart_item(user_id, product_id),
+        user_id=user_id,
+    ):
+        await send_product_description_messages(message, product_description_messages_payload(product))
+        return
+
     if public_media_type == "photo":
         try:
             data, filename, content_type = await download_public_media(public_media)
@@ -3253,10 +3924,11 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
                 raise ValueError(f"Unexpected content type: {content_type}")
             await message.answer_photo(
                 photo=BufferedInputFile(data, filename=filename),
-                caption=caption[:1024],
+                caption=caption,
                 parse_mode=ParseMode.HTML,
                 reply_markup=inline_markup,
             )
+            await send_product_description_messages(message, description_messages)
             return
         except Exception:
             pass
@@ -3268,15 +3940,81 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
                 raise ValueError(f"Unexpected content type: {content_type}")
             await message.answer_video(
                 video=BufferedInputFile(data, filename=filename),
-                caption=caption[:1024],
+                caption=caption,
                 parse_mode=ParseMode.HTML,
                 reply_markup=inline_markup,
             )
+            await send_product_description_messages(message, description_messages)
             return
         except Exception:
             pass
 
     await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=inline_markup)
+    await send_product_description_messages(message, description_messages)
+
+
+async def prepare_product_card(product_id: int, user_id=None):
+    """Prepare one catalog card without downloading media."""
+    product = get_product(product_id)
+    if not product:
+        return None
+
+    media_items = public_media_urls_for_product(product_id)
+    public_media, public_media_type = media_items[0] if media_items else (None, None)
+    caption, description_messages = product_caption_payload(
+        product,
+        has_media=public_media is not None,
+        user_id=user_id,
+    )
+    inline_markup = product_keyboard(product_id, len(media_items) or 1, 0, user_id=user_id)
+
+    return {
+        "product_id": product_id,
+        "product": product,
+        "user_id": user_id,
+        "media_items": media_items,
+        "public_media": public_media,
+        "public_media_type": public_media_type,
+        "caption": caption,
+        "description_messages": description_messages,
+        "reply_markup": inline_markup,
+    }
+
+
+async def send_prepared_product_card(message: Message, prepared):
+    """Send a previously prepared card and its description in strict order."""
+    if not prepared:
+        return
+
+    caption = prepared["caption"]
+    markup = prepared["reply_markup"]
+    product = prepared["product"]
+    media_items = prepared.get("media_items") or []
+
+    if await send_rich_product_card(
+        message,
+        product,
+        media_items,
+        in_cart=user_has_cart_item(prepared.get("user_id"), prepared["product_id"]),
+        user_id=prepared.get("user_id"),
+    ):
+        await send_product_description_messages(message, product_description_messages_payload(product))
+        return
+
+    public_media = prepared.get("public_media")
+    public_media_type = prepared.get("public_media_type")
+    await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+    await send_product_description_messages(message, prepared.get("description_messages"))
+
+
+async def prepare_product_cards(products, user_id=None):
+    tasks = [
+        asyncio.create_task(prepare_product_card(product["product_id"], user_id))
+        for product in products
+    ]
+    if not tasks:
+        return []
+    return await asyncio.gather(*tasks)
 
 
 async def send_media_url(message: Message, url, media_type, caption=None, reply_markup=None):
@@ -3314,7 +4052,7 @@ async def download_media_item(url, media_type):
 
 async def build_product_input_media(product, url, media_type, user_id=None):
     data, filename, content_type = await download_public_media(url)
-    caption = product_text(product, has_media=True, user_id=user_id)[:1024]
+    caption, _ = product_caption_payload(product, has_media=True, user_id=user_id)
     if media_type == "photo" and content_type.startswith("image/"):
         return InputMediaPhoto(
             media=BufferedInputFile(data, filename=filename),
@@ -3730,9 +4468,10 @@ def create_tg_order(draft):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     first_item = items[0]
     product_ids = [int(item["product_id"]) for item in items]
-    total = sum(Decimal(str(item.get("price") or 0)) for item in items)
-    latitude = draft.get("delivery_lat")
-    longitude = draft.get("delivery_lng")
+    delivery_method = draft.get("delivery_method") or "delivery"
+    products_total, total_weight, delivery_price, total = cart_delivery_totals(items, delivery_method=delivery_method)
+    latitude = draft.get("delivery_lat") if delivery_method == "delivery" else None
+    longitude = draft.get("delivery_lng") if delivery_method == "delivery" else None
     db_execute(
         """
         INSERT INTO tg_orders
@@ -3751,6 +4490,9 @@ def create_tg_order(draft):
             region = %s,
             delivery_lat = %s,
             delivery_lng = %s,
+            order_weight = %s,
+            delivery_price = %s,
+            delivery_method = %s,
             status = 'new',
             created_at = %s,
             updated_at = %s
@@ -3771,6 +4513,9 @@ def create_tg_order(draft):
             draft.get("region") or "",
             latitude,
             longitude,
+            total_weight,
+            delivery_price,
+            delivery_method,
             now,
             now,
         ),
@@ -3843,7 +4588,10 @@ def cancel_client_order(order_code, user_id):
     if status in {"new", "pending", "processing", "accepted", "contacted"}:
         restore_order_stock(order)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    db_execute("UPDATE tg_orders SET status = 'cancelled', updated_at = %s WHERE order_code = %s", (now, order_code))
+    db_execute(
+        "UPDATE tg_orders SET status = 'cancelled', cancel_reason = %s, updated_at = %s WHERE order_code = %s",
+        ("Отменено клиентом", now, order_code),
+    )
     return True, "Заказ отменен.", get_client_tg_order(order_code, user_id)
 
 
@@ -3858,6 +4606,23 @@ def client_order_text(order):
         "",
         f"<b>{tr(user_id, 'total')}:</b> {format_price(order['product_price'])}",
     ]
+    order_weight = Decimal(str(order.get("order_weight") or 0))
+    delivery_price = Decimal(str(order.get("delivery_price") or 0))
+    delivery_method = str(order.get("delivery_method") or "delivery")
+    if user_lang(user_id) == "uz":
+        lines.append(f"<b>Umumiy vazn:</b> {format_weight_value(order_weight)} g")
+        if delivery_method == "pickup":
+            lines.append("<b>Olish usuli:</b> 🏬 Olib ketish")
+            lines.append(f"<b>Manzil:</b> {html.escape(PICKUP_ADDRESS_UZ)}")
+        else:
+            lines.append(f"<b>Yetkazib berish:</b> {format_price(delivery_price) if delivery_price > 0 else 'bepul'}")
+    else:
+        lines.append(f"<b>Общий вес:</b> {format_weight_value(order_weight)} г")
+        if delivery_method == "pickup":
+            lines.append("<b>Получение:</b> 🏬 Самовывоз")
+            lines.append(f"<b>Адрес:</b> {html.escape(PICKUP_ADDRESS_RU)}")
+        else:
+            lines.append(f"<b>Доставка:</b> {format_price(delivery_price) if delivery_price > 0 else 'бесплатно'}")
     if items:
         lines.append(f"<b>{tr(user_id, 'items')}:</b>")
         for index, item in enumerate(items, 1):
@@ -3891,6 +4656,36 @@ def client_order_text(order):
     return "\n".join(lines)
 
 
+def order_cancel_reason(order):
+    if not order:
+        return ""
+    saved_reason = str(order.get("cancel_reason") or "").strip()
+    if saved_reason:
+        return saved_reason
+
+    # Совместимость со старыми отмененными заказами: пробуем взять причину из логов.
+    try:
+        rows = db_query(
+            """
+            SELECT details
+            FROM tg_manager_logs
+            WHERE target_id = %s
+              AND action = 'order_status_changed'
+              AND details LIKE %s
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(order.get("order_code") or ""), "%Причина:%"),
+        )
+        if rows:
+            details = str(rows[0].get("details") or "")
+            if "Причина:" in details:
+                return details.split("Причина:", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+
+
 def manager_order_text(order):
     username = f"@{order['client_username']}" if order.get("client_username") else "без username"
     items = get_tg_order_items(order["order_code"])
@@ -3903,6 +4698,21 @@ def manager_order_text(order):
         "",
         f"<b>Итого:</b> {format_price_amount(order['product_price'])}",
     ]
+    order_weight = Decimal(str(order.get("order_weight") or 0))
+    delivery_price = Decimal(str(order.get("delivery_price") or 0))
+    delivery_method = str(order.get("delivery_method") or "delivery")
+    lines.append(f"<b>Общий вес:</b> {format_weight_value(order_weight)} г")
+    if delivery_method == "pickup":
+        lines.append("<b>Получение:</b> 🏬 Самовывоз")
+        lines.append(f"<b>Адрес самовывоза:</b> {html.escape(PICKUP_ADDRESS_RU)}")
+    else:
+        lines.append("<b>Получение:</b> 🚚 Доставка")
+        lines.append(f"<b>Доставка:</b> {format_price_amount(delivery_price) if delivery_price > 0 else 'бесплатно'}")
+
+    if (order.get("status") or "") in {"cancelled", "completed_failed"}:
+        cancel_reason = order_cancel_reason(order)
+        if cancel_reason:
+            lines.append(f"<b>Причина отмены:</b> {html.escape(cancel_reason)}")
     if items:
         lines.append("<b>Товары:</b>")
         for index, item in enumerate(items, 1):
@@ -4033,21 +4843,22 @@ async def notify_managers(order_code):
 
 
 async def send_cards_page(callback: CallbackQuery, products, offset, kind, category_id=None):
-    page_products = products[:5]
-    has_next = len(products) > 5
+    page_products = products[:PAGE_SIZE]
+    has_next = len(products) > PAGE_SIZE
     if not page_products:
         await show_text(callback, "Товары не найдены.", reply_markup=main_menu(callback.from_user.id))
         await callback.answer()
         return
 
-    # Отправляем карточки товаров
-    await asyncio.gather(
-        *(send_product_card(callback.message, product["product_id"], callback.from_user.id) for product in page_products)
-    )
+    # Скачиваем/готовим медиа всех товаров параллельно, как в быстрой старой схеме.
+    # После подготовки отправляем пары строго по порядку: товар -> его описание.
+    prepared_cards = await prepare_product_cards(page_products, callback.from_user.id)
+    for prepared in prepared_cards:
+        await send_prepared_product_card(callback.message, prepared)
 
     # Отправляем навигацию с сохранением ReplyKeyboard
     await callback.message.answer(
-        "Показал 5 товаров. Можно открыть следующий набор.",
+        f"Показал {len(page_products)} товаров. Можно открыть следующий набор.",
         reply_markup=cards_nav_keyboard(kind, offset, has_next, category_id),
     )
     await callback.answer()
@@ -4102,14 +4913,25 @@ async def send_search_results(message: Message, user_id, category_key, offset=0)
             return
         await send_product_card(message, product_id, user_id)
 
+    async def send_current_page():
+        page_products = products[:PAGE_SIZE]
+        prepared_cards = await prepare_product_cards(page_products, user_id)
+        for prepared in prepared_cards:
+            current_state = USER_STATES.get(user_id, {})
+            if SEARCH_TOKENS.get(user_id) != search_token or current_state.get("view") != "search_results":
+                return
+            await send_prepared_product_card(message, prepared)
+
     current_state = USER_STATES.get(user_id, {})
     if SEARCH_TOKENS.get(user_id) == search_token and current_state.get("view") == "search_results":
-        tasks = [asyncio.create_task(send_current_product(product["product_id"])) for product in products[:PAGE_SIZE]]
-        SEARCH_TASKS[user_id] = tasks
+        task = asyncio.create_task(send_current_page())
+        SEARCH_TASKS[user_id] = [task]
         try:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            await task
+        except asyncio.CancelledError:
+            pass
         finally:
-            if SEARCH_TASKS.get(user_id) == tasks:
+            if SEARCH_TASKS.get(user_id) == [task]:
                 SEARCH_TASKS.pop(user_id, None)
 
 
@@ -4165,6 +4987,54 @@ async def catalog_message(message: Message):
     await delete_navigation_messages(message, old_state)
     USER_STATES[message.from_user.id] = {"section": "catalog", "view": "catalog", "filters": {}}
     await message.answer(tr(message.from_user.id, "catalog"), reply_markup=catalog_keyboard(message.from_user.id))
+
+
+@dp.message(F.text.in_(ARTICLE_SEARCH_TEXTS))
+async def article_search_message(message: Message, bot: Bot):
+    if MANAGER_BOT_TOKEN and getattr(bot, "token", "") == MANAGER_BOT_TOKEN:
+        return
+    cancel_search(message.from_user.id)
+    old_state = USER_STATES.get(message.from_user.id, {})
+    await delete_navigation_messages(message, old_state)
+    USER_STATES[message.from_user.id] = {"section": "home", "view": "article_search", "filters": {}}
+    await message.answer(
+        tr(message.from_user.id, "article_search_prompt"),
+        reply_markup=build_reply_keyboard([[KeyboardButton(text=tr(message.from_user.id, "back"))]]),
+    )
+
+
+@dp.message(
+    F.text,
+    lambda message: USER_STATES.get(message.from_user.id, {}).get("view") == "article_search"
+    and message.text not in HOME_TEXTS
+    and message.text not in BACK_TEXTS
+    and message.text not in ARTICLE_SEARCH_TEXTS,
+)
+async def article_search_query_message(message: Message, bot: Bot):
+    if MANAGER_BOT_TOKEN and getattr(bot, "token", "") == MANAGER_BOT_TOKEN:
+        return
+
+    query = " ".join((message.text or "").strip().split())
+    if not query:
+        return
+
+    products = find_products_by_model(query, limit=PAGE_SIZE)
+    if not products:
+        await message.answer(
+            tr(message.from_user.id, "article_search_not_found").format(model=html.escape(query)),
+            reply_markup=build_reply_keyboard([[KeyboardButton(text=tr(message.from_user.id, "back"))]]),
+        )
+        return
+
+    if len(products) > 1:
+        await message.answer(
+            tr(message.from_user.id, "article_search_many").format(count=len(products)),
+            reply_markup=build_reply_keyboard([[KeyboardButton(text=tr(message.from_user.id, "back"))]]),
+        )
+
+    prepared_cards = await prepare_product_cards(products, message.from_user.id)
+    for prepared in prepared_cards:
+        await send_prepared_product_card(message, prepared)
 
 
 @dp.message(F.text.in_(SELL_TEXTS))
@@ -4344,6 +5214,10 @@ async def manager_cancel_reason_message(message: Message, bot: Bot):
             reply_markup=build_reply_keyboard([[KeyboardButton(text=MANAGER_ORDERS_TEXT)]]),
         )
         return
+    db_execute(
+        "UPDATE tg_orders SET cancel_reason = %s WHERE order_code = %s",
+        (reason, order_code),
+    )
     update_tg_order_status(order_code, "cancelled", message.from_user)
     append_manager_log("order_status_changed", actor_id=message.from_user.id, target_id=order_code, details=f"Отмена. Причина: {reason}")
     order = get_tg_order(order_code)
@@ -4424,8 +5298,66 @@ async def order_contact_message(message: Message, bot: Bot):
         await message.answer(tr(message.from_user.id, "send_own_contact"), reply_markup=contact_request_keyboard(message.from_user.id))
         return
     draft["phone"] = contact.phone_number
-    draft["step"] = "region"
-    await message.answer(tr(message.from_user.id, "select_region"), reply_markup=region_keyboard(message.from_user.id))
+    draft["step"] = "delivery_method"
+    await message.answer(
+        tr(message.from_user.id, "select_delivery_method"),
+        reply_markup=delivery_method_keyboard(message.from_user.id),
+    )
+
+
+@dp.message(F.text.in_(DELIVERY_METHOD_TEXTS))
+async def order_delivery_method_message(message: Message):
+    draft = ORDER_DRAFTS.get(message.from_user.id)
+    if not draft or draft.get("step") != "delivery_method":
+        return
+
+    delivery_method = delivery_method_from_text(message.text)
+    if not delivery_method:
+        return
+
+    draft["delivery_method"] = delivery_method
+
+    if delivery_method == "delivery":
+        draft["step"] = "region"
+        await message.answer(
+            tr(message.from_user.id, "select_region"),
+            reply_markup=region_keyboard(message.from_user.id),
+        )
+        return
+
+    # Самовывоз: доставка не начисляется, адрес клиента и его геолокация не нужны.
+    draft["region"] = "Самовывоз"
+    draft["delivery_lat"] = None
+    draft["delivery_lng"] = None
+
+    order_code, error = create_tg_order(draft)
+    if error:
+        await message.answer(
+            localized_order_error(message.from_user.id, error) + "\n" + tr(message.from_user.id, "check_cart"),
+            reply_markup=main_menu(message.from_user.id),
+        )
+        return
+
+    manager_notified = await notify_managers(order_code)
+    ORDER_DRAFTS.pop(message.from_user.id, None)
+
+    pickup_address = PICKUP_ADDRESS_UZ if user_lang(message.from_user.id) == "uz" else PICKUP_ADDRESS_RU
+    await message.answer(
+        tr(message.from_user.id, "pickup_info").format(address=html.escape(pickup_address)),
+        parse_mode=ParseMode.HTML,
+        reply_markup=main_menu(message.from_user.id),
+    )
+    await message.answer_location(
+        latitude=PICKUP_LATITUDE,
+        longitude=PICKUP_LONGITUDE,
+    )
+    await message.answer(
+        tr(message.from_user.id, "order_accepted").format(order=display_order_code(order_code)) + "\n"
+        + tr(message.from_user.id, "manager_will_contact") + "\n"
+        + tr(message.from_user.id, "order_status_hint").format(orders=tr(message.from_user.id, "orders"))
+        + ("" if manager_notified else "\n\n" + tr(message.from_user.id, "manager_not_notified")),
+        reply_markup=main_menu(message.from_user.id),
+    )
 
 
 @dp.message(F.text.in_(set(REGIONS)))
@@ -4493,7 +5425,10 @@ async def back_message(message: Message):
     view = state.get("view")
     if view in {"product_details", "filter_values", "search_results", "category_filters"}:
         await safe_delete_message(message)
-    if view == "product_details":
+    if view == "article_search":
+        USER_STATES[message.from_user.id] = {"section": "home", "view": "home", "filters": {}}
+        await message.answer(tr(message.from_user.id, "main_menu"), reply_markup=main_menu(message.from_user.id))
+    elif view == "product_details":
         state["view"] = "category_filters" if state.get("category_key") else "catalog"
         if state.get("category_key"):
             await send_filter_status(message, category_filter_keyboard(message.from_user.id))
@@ -4643,28 +5578,7 @@ async def search_filters_message(message: Message):
     await send_filter_status(message, category_filter_keyboard(message.from_user.id))
 
 
-@dp.message(F.entities)
-async def debug_custom_emoji_message(message: Message):
-    pieces = []
-    for entity in message.entities or []:
-        if entity.type == "custom_emoji" and entity.custom_emoji_id:
-            fallback = entity.extract_from(message.text or "") or "▫️"
-            pieces.append((entity.custom_emoji_id, fallback))
-    if pieces:
-        ids = [emoji_id for emoji_id, _ in pieces]
-        html_chain = "".join(
-            f'<tg-emoji emoji-id="{html.escape(emoji_id)}">{html.escape(fallback)}</tg-emoji>'
-            for emoji_id, fallback in pieces
-        )
-        await message.answer(
-            "custom_emoji_id по порядку:\n"
-            + "\n".join(ids)
-            + "\n\nГотовая цепочка для кода:\n"
-            + f"<code>{html.escape(html_chain)}</code>",
-            parse_mode=ParseMode.HTML,
-        )
-
-
+# Debug custom emoji ID responder disabled for production.
 @dp.message()
 async def filter_value_message(message: Message):
     state = USER_STATES.get(message.from_user.id, {})
@@ -4672,6 +5586,8 @@ async def filter_value_message(message: Message):
         return
     filter_key = state.get("current_filter")
     if not filter_key:
+        return
+    if not message.text:
         return
     text = message.text.replace("✅ ", "").strip()
     values = get_filter_values(filter_key)
@@ -5105,8 +6021,6 @@ async def category_products_cards(callback: CallbackQuery):
     category_id = int(category_id)
     offset = int(offset)
     products = get_products_for_category(category_id, offset)
-    if len(products) == 5:
-        products = products + get_products_for_category(category_id, offset + 5)[:1]
     await send_cards_page(callback, products, offset, "cat", category_id)
 
 
@@ -5155,40 +6069,9 @@ async def product_media(callback: CallbackQuery):
 @dp.callback_query(F.data.startswith("details:"))
 async def product_details(callback: CallbackQuery):
     product_id = int(callback.data.split(":")[1])
-    product = get_product(product_id)
-    if not product:
-        await callback.answer(tr(callback.from_user.id, "product_not_found"))
-        return
-    media = public_media_urls_for_product(product_id)
-    if not media:
-        await callback.message.answer(
-            "Медиафайлы для этого товара не найдены.",
-            reply_markup=main_menu(callback.from_user.id),
-        )
-        await callback.answer()
-        return
     USER_STATES.setdefault(callback.from_user.id, {})["view"] = "product_details"
     USER_STATES[callback.from_user.id]["previous_view"] = "search_results"
-
-    first_url, first_media_type = media[0]
-    first_sent = await send_media_url(
-        callback.message,
-        first_url,
-        first_media_type,
-        reply_markup=order_keyboard(product_id),
-    )
-    media_group = []
-    for url, media_type in media[1:10] if first_sent else media[:10]:
-        item = await download_media_item(url, media_type)
-        if item:
-            media_group.append(item)
-    if media_group:
-        await callback.message.answer_media_group(media_group)
-    elif not first_sent:
-        await callback.message.answer(
-            "Не удалось загрузить медиафайлы.",
-            reply_markup=main_menu(callback.from_user.id),
-        )
+    await send_product(callback, product_id)
     await callback.answer()
 
 
@@ -5726,5 +6609,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
