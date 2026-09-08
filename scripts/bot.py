@@ -73,6 +73,8 @@ HTTP_SESSION = None
 PAGE_SIZE = 5
 RICH_CAROUSEL_ENABLED = os.getenv("RICH_CAROUSEL_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
 MAX_RICH_CAROUSEL_MEDIA = max(1, int(os.getenv("MAX_RICH_CAROUSEL_MEDIA", "5")))
+RICH_MEDIA_CACHE_CHAT_ID = os.getenv("RICH_MEDIA_CACHE_CHAT_ID", "").strip()
+RICH_MEDIA_CACHE_PATH = Path(__file__).with_name("rich_media_cache.json")
 TG_ORDER_STATUSES = {
     "new": "Ожидание",
     "pending": "Ожидание",
@@ -3636,6 +3638,96 @@ async def download_public_media(url):
     return data, filename, content_type
 
 
+def rich_media_cache_key(url, media_type):
+    raw = f"{media_type}:{url}".encode("utf-8", errors="ignore")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def load_rich_media_cache():
+    try:
+        with RICH_MEDIA_CACHE_PATH.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+            return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        logger.exception("Failed to read rich media cache")
+        return {}
+
+
+def save_rich_media_cache(cache):
+    try:
+        tmp_path = RICH_MEDIA_CACHE_PATH.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as file:
+            json.dump(cache, file, ensure_ascii=False, indent=2)
+        tmp_path.replace(RICH_MEDIA_CACHE_PATH)
+    except Exception:
+        logger.exception("Failed to write rich media cache")
+
+
+def rich_media_cache_chat_id():
+    value = RICH_MEDIA_CACHE_CHAT_ID or MANAGER_CHAT_ID
+    value = str(value or "").split(",")[0].strip()
+    if not value:
+        return None
+    if value.lstrip("-").isdigit():
+        return int(value)
+    return value
+
+
+async def telegram_file_id_for_rich_media(url, media_type):
+    cache_key = rich_media_cache_key(url, media_type)
+    cache = load_rich_media_cache()
+    cached = cache.get(cache_key)
+    if cached and cached.get("file_id") and cached.get("media_type") == media_type:
+        return cached["file_id"]
+
+    cache_chat_id = rich_media_cache_chat_id()
+    if not cache_chat_id:
+        logger.warning("Rich carousel skipped: RICH_MEDIA_CACHE_CHAT_ID is empty")
+        return None
+
+    try:
+        data, filename, content_type = await download_public_media(url)
+        if media_type == "photo" and content_type.startswith("image/"):
+            sent = await bot.send_photo(
+                chat_id=cache_chat_id,
+                photo=BufferedInputFile(data, filename=filename),
+                disable_notification=True,
+            )
+            file_id = sent.photo[-1].file_id if sent.photo else None
+        elif media_type == "video" and content_type.startswith("video/"):
+            sent = await bot.send_video(
+                chat_id=cache_chat_id,
+                video=BufferedInputFile(data, filename=filename),
+                disable_notification=True,
+            )
+            file_id = sent.video.file_id if sent.video else None
+        else:
+            logger.warning("Rich carousel upload skipped: unexpected content type %s for %s", content_type, url)
+            return None
+
+        if not file_id:
+            return None
+
+        try:
+            await bot.delete_message(cache_chat_id, sent.message_id)
+        except Exception:
+            logger.warning("Failed to delete rich media cache upload message", exc_info=True)
+
+        cache[cache_key] = {
+            "file_id": file_id,
+            "media_type": media_type,
+            "url": str(url),
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        save_rich_media_cache(cache)
+        return file_id
+    except Exception:
+        logger.exception("Failed to upload rich carousel media: %s", url)
+        return None
+
+
 async def show_text(callback: CallbackQuery, text, reply_markup=None, parse_mode=None):
     if isinstance(reply_markup, ReplyKeyboardMarkup):
         await callback.message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
@@ -3667,6 +3759,12 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
     caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=callback.from_user.id)
     in_cart = in_cart or user_has_cart_item(callback.from_user.id, product_id)
     markup = product_keyboard(product_id, len(media_items) or 1, 0, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
+    rich_markup = product_rich_keyboard(product_id, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
+
+    if media_items and await send_rich_product_slideshow(callback.message, media_items, caption, rich_markup):
+        await send_product_description_messages(callback.message, description_messages)
+        await callback.message.delete()
+        return
 
     if public_media_type == "photo":
         try:
@@ -3717,21 +3815,27 @@ async def send_rich_product_slideshow(message: Message, media_items, caption, re
     if not RICH_CAROUSEL_ENABLED:
         return False
 
+    uploaded_items = []
+    for url, media_type in (media_items or [])[:MAX_RICH_CAROUSEL_MEDIA]:
+        file_id = await telegram_file_id_for_rich_media(url, media_type)
+        if file_id:
+            uploaded_items.append((file_id, media_type))
+
     blocks = []
     media_payload = []
-    for index, (url, media_type) in enumerate((media_items or [])[:MAX_RICH_CAROUSEL_MEDIA]):
+    for index, (file_id, media_type) in enumerate(uploaded_items):
         media_id = f"m{index}"
         if media_type == "video":
             blocks.append(f'<video src="tg://video?id={media_id}"/>')
             media_payload.append({
                 "id": media_id,
-                "media": {"type": "video", "media": str(url)},
+                "media": {"type": "video", "media": file_id},
             })
         else:
             blocks.append(f'<img src="tg://photo?id={media_id}"/>')
             media_payload.append({
                 "id": media_id,
-                "media": {"type": "photo", "media": str(url)},
+                "media": {"type": "photo", "media": file_id},
             })
 
     if not media_payload:
