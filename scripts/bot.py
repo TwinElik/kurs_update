@@ -70,8 +70,7 @@ REVIEW_FALLBACK_PATH = Path(__file__).with_name("order_reviews.json")
 MANAGER_ACCESS_PATH = Path(__file__).with_name("manager_access.json")
 ADMIN_MANAGER_IDS = {"5216485765", "995855560"}
 HTTP_SESSION = None
-PAGE_SIZE = 3
-MAX_PRODUCT_MEDIA = 3
+PAGE_SIZE = 5
 TG_ORDER_STATUSES = {
     "new": "Ожидание",
     "pending": "Ожидание",
@@ -593,6 +592,8 @@ def is_placeholder_or_cache(image):
     return (
         not normalized
         or "no_image" in normalized
+        or normalized.startswith("cache/")
+        or normalized.startswith("image/cache/")
     )
 
 
@@ -1887,7 +1888,7 @@ def category_keyboard(categories):
 
 def products_keyboard(products, category_id=None, offset=0):
     rows = []
-    for product in products[:PAGE_SIZE]:
+    for product in products:
         rows.append(
             [
                 InlineKeyboardButton(
@@ -1902,14 +1903,14 @@ def products_keyboard(products, category_id=None, offset=0):
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"Показать {PAGE_SIZE} карточками",
+                    text="Показать 5 карточками",
                     callback_data=f"catcards:{category_id}:{offset}",
                 )
             ]
         )
     if category_id is not None and offset > 0:
         nav.append(InlineKeyboardButton(text="Назад", callback_data=f"cat:{category_id}:{max(offset - PAGE_SIZE, 0)}"))
-    if category_id is not None and len(products) > PAGE_SIZE:
+    if category_id is not None and len(products) == 5:
         nav.append(InlineKeyboardButton(text="Ещё", callback_data=f"cat:{category_id}:{offset + PAGE_SIZE}"))
     if nav:
         rows.append(nav)
@@ -1965,18 +1966,34 @@ def product_keyboard(product_id, media_count=1, media_index=0, in_cart=False, ba
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def product_action_keyboard(product_id, in_cart=False, back_to_cart=False, user_id=None):
-    site_button = InlineKeyboardButton(text=tr(user_id, "site"), url=product_site_link(product_id).replace("&amp;", "&"))
-    rows = [[site_button]]
+
+def product_carousel_keyboard(product_id, in_cart=False, back_to_cart=False, user_id=None):
+    """Keyboard for Telegram rich slideshow cards: no manual media arrows."""
+    rows = []
+    site_button = InlineKeyboardButton(
+        text=tr(user_id, "site"),
+        url=product_site_link(product_id).replace("&amp;", "&"),
+    )
     if in_cart:
-        rows.append([
-            InlineKeyboardButton(text=tr(user_id, "in_cart"), callback_data="cart_view"),
-            InlineKeyboardButton(text=tr(user_id, "remove_selection"), callback_data=f"cart_remove:{product_id}"),
-        ])
+        rows.append([site_button])
+        rows.append(
+            [
+                InlineKeyboardButton(text=tr(user_id, "in_cart"), callback_data="cart_view"),
+                InlineKeyboardButton(
+                    text=tr(user_id, "remove_selection"),
+                    callback_data=f"cart_remove:{product_id}",
+                ),
+            ]
+        )
         if back_to_cart:
-            rows.append([InlineKeyboardButton(text=tr(user_id, "back_to_cart"), callback_data="cart_view")])
+            rows.append(
+                [InlineKeyboardButton(text=tr(user_id, "back_to_cart"), callback_data="cart_view")]
+            )
     else:
-        rows.append([InlineKeyboardButton(text=tr(user_id, "add_to_cart"), callback_data=f"cart_add:{product_id}")])
+        rows.append([site_button])
+        rows.append(
+            [InlineKeyboardButton(text=tr(user_id, "add_to_cart"), callback_data=f"cart_add:{product_id}")]
+        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -2471,34 +2488,6 @@ def product_caption_payload(product, has_media=True, user_id=None):
         if chunk:
             chunks.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
     return base, chunks
-
-
-def product_description_messages_payload(product):
-    block = product_description_block(product)
-    if not block:
-        return []
-
-    if telegram_html_visible_length(block) <= 4096:
-        return [block]
-
-    plain = telegram_html_visible_text(product_description_telegram_html(product.get("description") or ""))
-    chunks = []
-    max_chars = 3700
-    while plain:
-        if len(plain) <= max_chars:
-            chunk, plain = plain, ""
-        else:
-            cut = plain.rfind("\n", 0, max_chars)
-            if cut < max_chars // 2:
-                cut = plain.rfind(" ", 0, max_chars)
-            if cut <= 0:
-                cut = max_chars
-            chunk, plain = plain[:cut], plain[cut:]
-        chunk = chunk.strip()
-        plain = plain.lstrip()
-        if chunk:
-            chunks.append(f"<blockquote expandable>{html.escape(chunk)}</blockquote>")
-    return chunks
 
 
 async def send_product_description_messages(message: Message, messages):
@@ -3016,9 +3005,9 @@ def get_products_for_category(category_id, offset=0):
           AND pd.language_id = %s
           AND (p2c.category_id = %s OR child.parent_id = %s)
         ORDER BY p.date_added DESC, p.product_id DESC
-        LIMIT %s OFFSET %s
+        LIMIT 5 OFFSET %s
         """,
-        (LANGUAGE_ID, category_id, category_id, PAGE_SIZE + 1, offset),
+        (LANGUAGE_ID, category_id, category_id, offset),
     )
 
 
@@ -3031,9 +3020,9 @@ def get_new_products():
         WHERE p.status = 1
           AND pd.language_id = %s
         ORDER BY p.date_added DESC, p.product_id DESC
-        LIMIT %s
+        LIMIT 5
         """,
-        (LANGUAGE_ID, PAGE_SIZE + 1),
+        (LANGUAGE_ID,),
     )
 
 
@@ -3046,9 +3035,9 @@ def get_new_products_page(offset=0):
         WHERE p.status = 1
           AND pd.language_id = %s
         ORDER BY p.date_added DESC, p.product_id DESC
-        LIMIT %s OFFSET %s
+        LIMIT 6 OFFSET %s
         """,
-        (LANGUAGE_ID, PAGE_SIZE + 1, offset),
+        (LANGUAGE_ID, offset),
     )
 
 
@@ -3144,8 +3133,7 @@ def build_filtered_query(user_id, category_key, offset=0, count_only=False):
     sql.append("WHERE " + " AND ".join(where))
     if not count_only:
         sql.append("ORDER BY (p.quantity > 0) DESC, p.date_added DESC, p.product_id DESC")
-        sql.append("LIMIT %s OFFSET %s")
-        params.append(PAGE_SIZE + 1)
+        sql.append("LIMIT 6 OFFSET %s")
         params.append(offset)
 
     return "\n".join(sql), params
@@ -3568,36 +3556,10 @@ def public_media_url(product):
         suffix = Path(image).suffix.lower()
         if suffix not in PHOTO_EXTENSIONS and suffix not in VIDEO_EXTENSIONS:
             continue
-        encoded = quote(image.replace("\\", "/"), safe="/%")
+        encoded = quote(image.replace("\\", "/"), safe="/")
         media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
         return PUBLIC_IMAGE_URL + encoded, media_type
     return None, None
-
-
-def public_media_url_from_relative_path(path, media_type):
-    path = original_image_path(path or "")
-    if is_placeholder_or_cache(path):
-        return None
-    return PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/%"), media_type
-
-
-def media_path_candidates(image):
-    raw = (image or "").replace("\\", "/").lstrip("/")
-    if not raw:
-        return []
-    if raw.startswith(("http://", "https://")):
-        return [raw]
-    without_image_prefix = raw[len("image/") :] if raw.startswith("image/") else raw
-    candidates = [without_image_prefix, original_image_path(raw)]
-    unique = []
-    seen = set()
-    for path in candidates:
-        path = (path or "").replace("\\", "/").lstrip("/")
-        if not path or path in seen:
-            continue
-        seen.add(path)
-        unique.append(path)
-    return unique
 
 
 def public_media_urls_for_product(product_id):
@@ -3606,27 +3568,22 @@ def public_media_urls_for_product(product_id):
         return []
 
     def media_item(image):
-        items = []
-        for path in media_path_candidates(image):
-            if is_placeholder_or_cache(path):
-                continue
-            suffix = Path(path.split("?", 1)[0]).suffix.lower()
-            if suffix not in PHOTO_EXTENSIONS and suffix not in VIDEO_EXTENSIONS:
-                continue
-            media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
-            if path.startswith(("http://", "https://")):
-                url = path
-            else:
-                url = PUBLIC_IMAGE_URL + quote(path, safe="/%")
-            items.append((url, media_type))
-        return items
+        path = original_image_path(image or "")
+        if is_placeholder_or_cache(path):
+            return None
+        suffix = Path(path).suffix.lower()
+        if suffix not in PHOTO_EXTENSIONS and suffix not in VIDEO_EXTENSIONS:
+            return None
+        media_type = "photo" if suffix in PHOTO_EXTENSIONS else "video"
+        url = PUBLIC_IMAGE_URL + quote(path.replace("\\", "/"), safe="/")
+        return (url, media_type)
 
-    primary_items = media_item(product.get("image") or "")
-    primary = primary_items[0] if primary_items else None
+    primary = media_item(product.get("image") or "")
     extras = []
 
-    extras.extend(primary_items[1:])
-    extras.extend(media_item(product.get("fallback_image") or ""))
+    fallback = media_item(product.get("fallback_image") or "")
+    if fallback:
+        extras.append(fallback)
 
     rows = db_query(
         """
@@ -3638,33 +3595,9 @@ def public_media_urls_for_product(product_id):
         (product_id,),
     )
     for row in rows:
-        extras.extend(media_item(row["image"]))
-
-    if not primary and not extras:
-        local_path, local_media_type = local_media_path(product)
-        if local_path and local_media_type:
-            try:
-                relative_path = local_path.relative_to(IMAGE_ROOT).as_posix()
-                local_item = public_media_url_from_relative_path(relative_path, local_media_type)
-                if local_item:
-                    extras.append(local_item)
-            except ValueError:
-                pass
-
-    if not primary and not extras:
-        logger.warning(
-            "No public media URLs for product_id=%s image=%s fallback_image=%s",
-            product_id,
-            product.get("image"),
-            product.get("fallback_image"),
-        )
-        print(
-            "No public media URLs:",
-            f"product_id={product_id}",
-            f"image={product.get('image')}",
-            f"fallback_image={product.get('fallback_image')}",
-            f"product_image_rows={[row.get('image') for row in rows[:5]]}",
-        )
+        item = media_item(row["image"])
+        if item:
+            extras.append(item)
 
     # Remove duplicates while preserving the database order.
     unique_extras = []
@@ -3676,11 +3609,11 @@ def public_media_urls_for_product(product_id):
         unique_extras.append(item)
 
     if not primary:
-        return unique_extras[:MAX_PRODUCT_MEDIA]
+        return unique_extras
 
     if primary[1] == "photo":
         # Main photo is already lightweight and should stay first.
-        return ([primary] + unique_extras)[:MAX_PRODUCT_MEDIA]
+        return [primary] + unique_extras
 
     # Main media is a video. Telegram loads a photo faster, so show the first
     # available additional photo first and put the primary video second.
@@ -3689,44 +3622,10 @@ def public_media_urls_for_product(product_id):
         None,
     )
     if first_photo_index is None:
-        return ([primary] + unique_extras)[:MAX_PRODUCT_MEDIA]
+        return [primary] + unique_extras
 
     first_photo = unique_extras.pop(first_photo_index)
-    return ([first_photo, primary] + unique_extras)[:MAX_PRODUCT_MEDIA]
-
-
-async def filter_reachable_media_items(media_items, product_id=None):
-    reachable = []
-    for url, media_type in media_items:
-        try:
-            session = await get_http_session()
-            async with session.head(url, allow_redirects=True) as response:
-                status = response.status
-                content_type = response.headers.get("Content-Type", "")
-                if status != 200:
-                    async with session.get(url, allow_redirects=True, headers={"Range": "bytes=0-0"}) as get_response:
-                        status = get_response.status
-                        content_type = get_response.headers.get("Content-Type", "")
-            if status not in {200, 206}:
-                logger.warning("Media URL skipped for product_id=%s status=%s url=%s", product_id, status, url)
-                print("Media URL skipped:", f"product_id={product_id}", f"status={status}", f"url={url}")
-                continue
-            if media_type == "photo" and not content_type.startswith("image/"):
-                logger.warning("Media URL skipped for product_id=%s content_type=%s url=%s", product_id, content_type, url)
-                print("Media URL skipped:", f"product_id={product_id}", f"content_type={content_type}", f"url={url}")
-                continue
-            if media_type == "video" and not content_type.startswith("video/"):
-                logger.warning("Media URL skipped for product_id=%s content_type=%s url=%s", product_id, content_type, url)
-                print("Media URL skipped:", f"product_id={product_id}", f"content_type={content_type}", f"url={url}")
-                continue
-            reachable.append((url, media_type))
-        except Exception as e:
-            logger.warning("Media URL check failed for product_id=%s url=%s error=%r", product_id, url, e)
-            print("Media URL check failed:", f"product_id={product_id}", f"url={url}", f"error={repr(e)}")
-    if media_items and not reachable:
-        logger.warning("All media URLs unreachable for product_id=%s urls=%s", product_id, [item[0] for item in media_items])
-        print("All media URLs unreachable:", f"product_id={product_id}", f"urls={[item[0] for item in media_items]}")
-    return reachable
+    return [first_photo, primary] + unique_extras
 
 
 async def get_http_session():
@@ -3769,176 +3668,65 @@ def product_text(product, has_media=True, user_id=None):
     return "\n".join(text)
 
 
-def rich_message_button_rows(product_id, in_cart=False, back_to_cart=False, user_id=None):
-    site_url = product_site_link(product_id).replace("&amp;", "&")
-    site_text = html.escape(tr(user_id, "site"))
-    rows = []
-    if in_cart:
-        rows.append(
-            f'<tg-button-row align="center"><tg-button type="callback_data" style="primary" data="cart_view">{html.escape(tr(user_id, "in_cart"))}</tg-button></tg-button-row>'
-        )
-        rows.append(
-            f'<tg-button-row align="center"><tg-button type="callback_data" style="danger" data="cart_remove:{product_id}">{html.escape(tr(user_id, "remove_selection"))}</tg-button></tg-button-row>'
-        )
-        if back_to_cart:
-            rows.append(
-                f'<tg-button-row align="center"><tg-button type="callback_data" style="link" data="cart_view">{html.escape(tr(user_id, "back_to_cart"))}</tg-button></tg-button-row>'
-            )
-    else:
-        rows.append(
-            f'<tg-button-row align="center"><tg-button type="callback_data" style="primary" data="cart_add:{product_id}">{html.escape(tr(user_id, "add_to_cart"))}</tg-button></tg-button-row>'
-        )
-    rows.append(
-        f'<tg-button-row align="center"><tg-button type="url" style="success" url="{html.escape(site_url, quote=True)}">{site_text}</tg-button></tg-button-row>'
-    )
-    return "\n".join(rows)
-
-
-def rich_product_detail_html(product, media_items, user_id=None):
-    name = html.escape(html.unescape(product["name"]))
-    model = html.escape(product.get("model") or "")
-    weight = Decimal(str(product.get("weight") or 0))
-    quantity = int(product.get("quantity") or 0)
-    filter_map = get_product_filter_map(product["product_id"])
-    size = find_size_filter_value(filter_map)
-    sample = display_filter_name("sample", first_filter_value(filter_map, "Проба"))
-    metal = infer_metal(product, filter_map)
-    country = find_country_filter_value(filter_map)
-
-    lines = [f'<b>{tr(user_id, "price")}:</b> <b>{format_price(product["price"])}</b>']
-    if weight > 0:
-        unit = "g" if user_lang(user_id) == "uz" else "г"
-        lines.append(f'<b>{tr(user_id, "weight")}:</b> {weight.normalize()} {unit}')
-    if size:
-        size_title = "O'lcham" if user_lang(user_id) == "uz" else "Размер"
-        lines.append(f"<b>{size_title}:</b> {html.escape(str(size))}")
-    if sample:
-        lines.append(f'<b>{tr(user_id, "sample")}:</b> {html.escape(sample)}')
-    if metal:
-        metal_text = {"Золото": "Tilla", "Серебро": "Kumush"}.get(metal, metal) if user_lang(user_id) == "uz" else metal
-        lines.append(f'<b>{tr(user_id, "metal")}:</b> {html.escape(metal_text)}')
-    in_stock_for_user = quantity > 0 or user_has_active_reserve(user_id, product["product_id"])
-    stock_text = tr(user_id, "in_stock") if in_stock_for_user else tr(user_id, "out_of_stock")
-    lines.append(f'<b>{tr(user_id, "status")}:</b> {html.escape(stock_text)}')
-    if country:
-        lines.append(f'<b>{tr(user_id, "production")}:</b> {html.escape(country)}')
-    if model:
-        lines.append(f'<b>{tr(user_id, "model")}:</b> <code>{model}</code>')
-    if not media_items:
-        lines.append(html.escape(tr(user_id, "no_media")))
-    return f"<h3>{name}</h3>\n<p>{'<br/>'.join(lines)}</p>"
-
-
-def build_rich_product_media_tags(media_items):
-    media_tags = []
-    for url, media_type in media_items[:MAX_PRODUCT_MEDIA]:
-        escaped_url = html.escape(url, quote=True)
-        if media_type == "photo":
-            media_tags.append(f'<img src="{escaped_url}"/>')
-        elif media_type == "video":
-            media_tags.append(f'<video src="{escaped_url}"></video>')
-    return "".join(media_tags)
-
-
-def build_rich_product_html(product, media_items, in_cart=False, back_to_cart=False, user_id=None):
-    caption = rich_product_detail_html(product, media_items, user_id=user_id)
-    media_tags = build_rich_product_media_tags(media_items)
-    slideshow = f"<tg-slideshow>{media_tags}</tg-slideshow>" if media_tags else ""
-    buttons = rich_message_button_rows(
-        product["product_id"],
-        in_cart=in_cart,
-        back_to_cart=back_to_cart,
-        user_id=user_id,
-    )
-    return "\n".join(part for part in (slideshow, caption, buttons) if part)
-
-
-async def send_telegram_api(method, payload):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
-    session = await get_http_session()
-    async with session.post(url, json=payload) as response:
-        status = response.status
-        raw_text = await response.text()
-    try:
-        data = json.loads(raw_text)
-    except json.JSONDecodeError:
-        logger.warning("Telegram %s HTTP %s returned non-JSON response: %s", method, status, raw_text)
-        return False, {"ok": False, "description": raw_text, "http_status": status}
-    data["http_status"] = status
-    if not data.get("ok"):
-        logger.warning(
-            "Telegram %s failed. HTTP status=%s response=%s",
-            method,
-            status,
-            json.dumps(data, ensure_ascii=False),
-        )
-    return bool(data.get("ok")), data
-
-
-async def send_rich_product_card(message: Message, product, media_items, in_cart=False, back_to_cart=False, user_id=None):
-    if not media_items:
-        logger.warning("Rich Message skipped for product_id=%s: no media URLs", product.get("product_id"))
-        return False
-    rich_html = build_rich_product_html(
-        product,
-        media_items,
-        in_cart=in_cart,
-        back_to_cart=back_to_cart,
-        user_id=user_id,
-    )
-    payload = {
-        "chat_id": message.chat.id,
-        "rich_message": {
-            "html": rich_html,
-            "skip_entity_detection": True,
-        },
-    }
-    ok, data = await send_telegram_api("sendRichMessage", payload)
-    if not ok:
-        logger.warning(
-            "Rich Message fallback for product_id=%s description=%s",
-            product.get("product_id"),
-            data.get("description"),
-        )
-        print(
-            "Rich Message fallback:",
-            f"product_id={product.get('product_id')}",
-            f"http_status={data.get('http_status')}",
-            f"description={data.get('description')}",
-            "response=" + json.dumps(data, ensure_ascii=False),
-        )
-    return ok
-
-
 async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, back_to_cart=False):
     product = get_product(product_id)
     if not product:
         await show_text(callback, tr(callback.from_user.id, "product_not_found"), reply_markup=main_menu(callback.from_user.id))
         return
 
-    media_items = await filter_reachable_media_items(public_media_urls_for_product(product_id), product_id)
+    media_items = public_media_urls_for_product(product_id)
     public_media, public_media_type = media_items[0] if media_items else public_media_url(product)
     caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=callback.from_user.id)
     in_cart = in_cart or user_has_cart_item(callback.from_user.id, product_id)
-    fallback_markup = product_action_keyboard(product_id, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
+    markup = product_keyboard(product_id, len(media_items) or 1, 0, in_cart=in_cart, back_to_cart=back_to_cart, user_id=callback.from_user.id)
 
-    if await send_rich_product_card(
-        callback.message,
-        product,
-        media_items,
-        in_cart=in_cart,
-        back_to_cart=back_to_cart,
-        user_id=callback.from_user.id,
-    ):
-        await send_product_description_messages(callback.message, product_description_messages_payload(product))
+    if public_media_type == "photo":
         try:
+            data, filename, content_type = await download_public_media(public_media)
+            if not content_type.startswith("image/"):
+                raise ValueError(f"Unexpected content type: {content_type}")
+            await callback.message.answer_photo(
+                photo=BufferedInputFile(data, filename=filename),
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+            )
+            await send_product_description_messages(callback.message, description_messages)
             await callback.message.delete()
         except Exception:
-            pass
-        return
+            await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await send_product_description_messages(callback.message, description_messages)
+    elif public_media_type == "video":
+        try:
+            data, filename, content_type = await download_public_media(public_media)
+            if not content_type.startswith("video/"):
+                raise ValueError(f"Unexpected content type: {content_type}")
+            await callback.message.answer_video(
+                video=BufferedInputFile(data, filename=filename),
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+            )
+            await send_product_description_messages(callback.message, description_messages)
+            await callback.message.delete()
+        except Exception:
+            await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await send_product_description_messages(callback.message, description_messages)
+    else:
+        await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+        await send_product_description_messages(callback.message, description_messages)
 
-    await show_text(callback, caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
-    await send_product_description_messages(callback.message, description_messages)
+
+
+async def send_rich_product_slideshow(message: Message, media_items, caption, reply_markup):
+    """
+    Rich Message is intentionally disabled for the stable VPS build.
+
+    Telegram currently rejects diamant.uz media in sendRichMessage with
+    RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND, while the normal photo/video sending path
+    works. Keep the function as a no-op so call sites safely fall back.
+    """
+    return False
 
 
 async def send_product_card(message: Message, product_id: int, user_id=None):
@@ -3946,91 +3734,144 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
     if not product:
         return
 
-    media_items = await filter_reachable_media_items(public_media_urls_for_product(product_id), product_id)
+    media_items = public_media_urls_for_product(product_id)
     public_media, public_media_type = media_items[0] if media_items else (None, None)
     user_id = user_id or message.chat.id
-    caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=user_id)
-    fallback_markup = product_action_keyboard(product_id, in_cart=user_has_cart_item(user_id, product_id), user_id=user_id)
-    
-    # Получаем состояние пользователя для определения правильной ReplyKeyboard
-    state = USER_STATES.get(user_id, {})
-    view = state.get("view")
-    if view == "search_results":
-        total = state.get("search_total", 0)
-        offset = state.get("search_offset", 0)
-        reply_kb = search_results_keyboard(user_id, total, offset)
-    else:
-        reply_kb = main_menu(user_id)
-
-    if await send_rich_product_card(
-        message,
-        product,
-        media_items,
-        in_cart=user_has_cart_item(user_id, product_id),
-        user_id=user_id,
-    ):
-        await send_product_description_messages(message, product_description_messages_payload(product))
-        return
-
-    await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
-    await send_product_description_messages(message, description_messages)
-
-
-async def prepare_product_card(product_id: int, user_id=None):
-    """Prepare one catalog card without downloading media."""
-    product = get_product(product_id)
-    if not product:
-        return None
-
-    media_items = await filter_reachable_media_items(public_media_urls_for_product(product_id), product_id)
-    public_media, public_media_type = media_items[0] if media_items else (None, None)
     caption, description_messages = product_caption_payload(
         product,
         has_media=public_media is not None,
         user_id=user_id,
     )
-    inline_markup = product_action_keyboard(product_id, in_cart=user_has_cart_item(user_id, product_id), user_id=user_id)
+    inline_markup = product_carousel_keyboard(product_id, user_id=user_id)
+
+    # Preferred path: Telegram Rich Message slideshow, max 3 media.
+    if media_items:
+        if await send_rich_product_slideshow(
+            message,
+            media_items,
+            caption,
+            inline_markup,
+        ):
+            await send_product_description_messages(message, description_messages)
+            return
+
+    # Safe fallback for older/unsupported Bot API/client behavior:
+    # send only the first media exactly like before.
+    if public_media_type == "photo":
+        try:
+            data, filename, content_type = await download_public_media(public_media)
+            if not content_type.startswith("image/"):
+                raise ValueError(f"Unexpected content type: {content_type}")
+            await message.answer_photo(
+                photo=BufferedInputFile(data, filename=filename),
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=inline_markup,
+            )
+            await send_product_description_messages(message, description_messages)
+            return
+        except Exception:
+            pass
+
+    if public_media_type == "video":
+        try:
+            data, filename, content_type = await download_public_media(public_media)
+            if not content_type.startswith("video/"):
+                raise ValueError(f"Unexpected content type: {content_type}")
+            await message.answer_video(
+                video=BufferedInputFile(data, filename=filename),
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=inline_markup,
+            )
+            await send_product_description_messages(message, description_messages)
+            return
+        except Exception:
+            pass
+
+    await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=inline_markup)
+    await send_product_description_messages(message, description_messages)
+
+
+async def prepare_product_card(product_id: int, user_id=None):
+    """Prepare a catalog card. Rich slideshow uses public URLs directly."""
+    product = get_product(product_id)
+    if not product:
+        return None
+
+    media_items = public_media_urls_for_product(product_id)
+    has_media = bool(media_items)
+    caption, description_messages = product_caption_payload(
+        product,
+        has_media=has_media,
+        user_id=user_id,
+    )
+    inline_markup = product_carousel_keyboard(product_id, user_id=user_id)
 
     return {
         "product_id": product_id,
-        "product": product,
-        "user_id": user_id,
-        "media_items": media_items,
-        "public_media": public_media,
-        "public_media_type": public_media_type,
         "caption": caption,
         "description_messages": description_messages,
         "reply_markup": inline_markup,
+        "media_items": media_items,
     }
 
 
 async def send_prepared_product_card(message: Message, prepared):
-    """Send a previously prepared card and its description in strict order."""
+    """Send one prepared card in order using the stable photo/video fallback."""
     if not prepared:
         return
 
     caption = prepared["caption"]
     markup = prepared["reply_markup"]
-    product = prepared["product"]
     media_items = prepared.get("media_items") or []
 
-    if await send_rich_product_card(
-        message,
-        product,
-        media_items,
-        in_cart=user_has_cart_item(prepared.get("user_id"), prepared["product_id"]),
-        user_id=prepared.get("user_id"),
-    ):
-        await send_product_description_messages(message, product_description_messages_payload(product))
-        return
+    if media_items:
+        if await send_rich_product_slideshow(message, media_items, caption, markup):
+            await send_product_description_messages(
+                message,
+                prepared.get("description_messages"),
+            )
+            return
 
-    public_media = prepared.get("public_media")
-    public_media_type = prepared.get("public_media_type")
+        # Fallback: if rich slideshow is rejected, only download/send first media.
+        public_media, public_media_type = media_items[0]
+        try:
+            data, filename, content_type = await download_public_media(public_media)
+            valid = (
+                public_media_type == "photo" and content_type.startswith("image/")
+            ) or (
+                public_media_type == "video" and content_type.startswith("video/")
+            )
+            if valid:
+                if public_media_type == "photo":
+                    await message.answer_photo(
+                        photo=BufferedInputFile(data, filename=filename),
+                        caption=caption,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=markup,
+                    )
+                else:
+                    await message.answer_video(
+                        video=BufferedInputFile(data, filename=filename),
+                        caption=caption,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=markup,
+                    )
+                await send_product_description_messages(
+                    message,
+                    prepared.get("description_messages"),
+                )
+                return
+        except Exception:
+            logger.exception("Fallback media send failed for product %s", prepared.get("product_id"))
+
     await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=markup)
     await send_product_description_messages(message, prepared.get("description_messages"))
 
 
 async def prepare_product_cards(products, user_id=None):
+    """Download media for all cards concurrently while preserving input order."""
     tasks = [
         asyncio.create_task(prepare_product_card(product["product_id"], user_id))
         for product in products
@@ -4881,7 +4722,7 @@ async def send_cards_page(callback: CallbackQuery, products, offset, kind, categ
 
     # Отправляем навигацию с сохранением ReplyKeyboard
     await callback.message.answer(
-        f"Показал {len(page_products)} товаров. Можно открыть следующий набор.",
+        f"Показал {len(page_products)} товара. Можно открыть следующий набор.",
         reply_markup=cards_nav_keyboard(kind, offset, has_next, category_id),
     )
     await callback.answer()
@@ -5041,7 +4882,7 @@ async def article_search_query_message(message: Message, bot: Bot):
     if not query:
         return
 
-    products = find_products_by_model(query, limit=PAGE_SIZE)
+    products = find_products_by_model(query, limit=5)
     if not products:
         await message.answer(
             tr(message.from_user.id, "article_search_not_found").format(model=html.escape(query)),
@@ -6044,6 +5885,8 @@ async def category_products_cards(callback: CallbackQuery):
     category_id = int(category_id)
     offset = int(offset)
     products = get_products_for_category(category_id, offset)
+    if len(products) == 5:
+        products = products + get_products_for_category(category_id, offset + PAGE_SIZE)[:1]
     await send_cards_page(callback, products, offset, "cat", category_id)
 
 
@@ -6092,9 +5935,40 @@ async def product_media(callback: CallbackQuery):
 @dp.callback_query(F.data.startswith("details:"))
 async def product_details(callback: CallbackQuery):
     product_id = int(callback.data.split(":")[1])
+    product = get_product(product_id)
+    if not product:
+        await callback.answer(tr(callback.from_user.id, "product_not_found"))
+        return
+    media = public_media_urls_for_product(product_id)
+    if not media:
+        await callback.message.answer(
+            "Медиафайлы для этого товара не найдены.",
+            reply_markup=main_menu(callback.from_user.id),
+        )
+        await callback.answer()
+        return
     USER_STATES.setdefault(callback.from_user.id, {})["view"] = "product_details"
     USER_STATES[callback.from_user.id]["previous_view"] = "search_results"
-    await send_product(callback, product_id)
+
+    first_url, first_media_type = media[0]
+    first_sent = await send_media_url(
+        callback.message,
+        first_url,
+        first_media_type,
+        reply_markup=order_keyboard(product_id),
+    )
+    media_group = []
+    for url, media_type in media[1:10] if first_sent else media[:10]:
+        item = await download_media_item(url, media_type)
+        if item:
+            media_group.append(item)
+    if media_group:
+        await callback.message.answer_media_group(media_group)
+    elif not first_sent:
+        await callback.message.answer(
+            "Не удалось загрузить медиафайлы.",
+            reply_markup=main_menu(callback.from_user.id),
+        )
     await callback.answer()
 
 
@@ -6632,3 +6506,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
