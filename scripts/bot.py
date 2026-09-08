@@ -71,6 +71,8 @@ MANAGER_ACCESS_PATH = Path(__file__).with_name("manager_access.json")
 ADMIN_MANAGER_IDS = {"5216485765", "995855560"}
 HTTP_SESSION = None
 PAGE_SIZE = 5
+RICH_CAROUSEL_ENABLED = os.getenv("RICH_CAROUSEL_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
+MAX_RICH_CAROUSEL_MEDIA = max(1, int(os.getenv("MAX_RICH_CAROUSEL_MEDIA", "5")))
 TG_ORDER_STATUSES = {
     "new": "Ожидание",
     "pending": "Ожидание",
@@ -1818,9 +1820,9 @@ def search_nav_keyboard(user_id, category_key, offset, has_next):
     rows = []
     nav = []
     if offset > 0:
-        nav.append(InlineKeyboardButton(text=tr(user_id, "back"), callback_data=f"search:{category_key}:{max(offset - PAGE_SIZE, 0)}"))
+        nav.append(InlineKeyboardButton(text=tr(user_id, "back"), callback_data=f"search:{category_key}:{max(offset - 5, 0)}"))
     if has_next:
-        nav.append(InlineKeyboardButton(text=tr(user_id, "next"), callback_data=f"search:{category_key}:{offset + PAGE_SIZE}"))
+        nav.append(InlineKeyboardButton(text=tr(user_id, "next"), callback_data=f"search:{category_key}:{offset + 5}"))
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton(text=tr(user_id, "filters"), callback_data="fback")])
@@ -1909,9 +1911,9 @@ def products_keyboard(products, category_id=None, offset=0):
             ]
         )
     if category_id is not None and offset > 0:
-        nav.append(InlineKeyboardButton(text="Назад", callback_data=f"cat:{category_id}:{max(offset - PAGE_SIZE, 0)}"))
+        nav.append(InlineKeyboardButton(text="Назад", callback_data=f"cat:{category_id}:{max(offset - 5, 0)}"))
     if category_id is not None and len(products) == 5:
-        nav.append(InlineKeyboardButton(text="Ещё", callback_data=f"cat:{category_id}:{offset + PAGE_SIZE}"))
+        nav.append(InlineKeyboardButton(text="Ещё", callback_data=f"cat:{category_id}:{offset + 5}"))
     if nav:
         rows.append(nav)
 
@@ -1924,14 +1926,14 @@ def cards_nav_keyboard(kind, offset, has_next, category_id=None):
     nav = []
     if offset > 0:
         if kind == "new":
-            nav.append(InlineKeyboardButton(text="Назад", callback_data=f"newcards:{max(offset - PAGE_SIZE, 0)}"))
+            nav.append(InlineKeyboardButton(text="Назад", callback_data=f"newcards:{max(offset - 5, 0)}"))
         else:
-            nav.append(InlineKeyboardButton(text="Назад", callback_data=f"catcards:{category_id}:{max(offset - PAGE_SIZE, 0)}"))
+            nav.append(InlineKeyboardButton(text="Назад", callback_data=f"catcards:{category_id}:{max(offset - 5, 0)}"))
     if has_next:
         if kind == "new":
-            nav.append(InlineKeyboardButton(text="Далее", callback_data=f"newcards:{offset + PAGE_SIZE}"))
+            nav.append(InlineKeyboardButton(text="Далее", callback_data=f"newcards:{offset + 5}"))
         else:
-            nav.append(InlineKeyboardButton(text="Далее", callback_data=f"catcards:{category_id}:{offset + PAGE_SIZE}"))
+            nav.append(InlineKeyboardButton(text="Далее", callback_data=f"catcards:{category_id}:{offset + 5}"))
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton(text="Категории", callback_data="cats")])
@@ -1966,34 +1968,20 @@ def product_keyboard(product_id, media_count=1, media_index=0, in_cart=False, ba
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-
-def product_carousel_keyboard(product_id, in_cart=False, back_to_cart=False, user_id=None):
-    """Keyboard for Telegram rich slideshow cards: no manual media arrows."""
+def product_rich_keyboard(product_id, in_cart=False, back_to_cart=False, user_id=None):
     rows = []
-    site_button = InlineKeyboardButton(
-        text=tr(user_id, "site"),
-        url=product_site_link(product_id).replace("&amp;", "&"),
-    )
+    site_button = InlineKeyboardButton(text=tr(user_id, "site"), url=product_site_link(product_id).replace("&amp;", "&"))
     if in_cart:
         rows.append([site_button])
-        rows.append(
-            [
-                InlineKeyboardButton(text=tr(user_id, "in_cart"), callback_data="cart_view"),
-                InlineKeyboardButton(
-                    text=tr(user_id, "remove_selection"),
-                    callback_data=f"cart_remove:{product_id}",
-                ),
-            ]
-        )
+        rows.append([
+            InlineKeyboardButton(text=tr(user_id, "in_cart"), callback_data="cart_view"),
+            InlineKeyboardButton(text=tr(user_id, "remove_selection"), callback_data=f"cart_remove:{product_id}"),
+        ])
         if back_to_cart:
-            rows.append(
-                [InlineKeyboardButton(text=tr(user_id, "back_to_cart"), callback_data="cart_view")]
-            )
+            rows.append([InlineKeyboardButton(text=tr(user_id, "back_to_cart"), callback_data="cart_view")])
     else:
         rows.append([site_button])
-        rows.append(
-            [InlineKeyboardButton(text=tr(user_id, "add_to_cart"), callback_data=f"cart_add:{product_id}")]
-        )
+        rows.append([InlineKeyboardButton(text=tr(user_id, "add_to_cart"), callback_data=f"cart_add:{product_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -3416,7 +3404,7 @@ def cart_text(items, user_id=None):
         lines.append(f"<b>Umumiy vazn:</b> {format_weight_value(total_weight)} g")
         if delivery_price > 0:
             lines.append(f"<b>Yetkazib berish:</b> {format_price(delivery_price)}")
-            lines.append("🚚 4 g dan boshlab yetkazib berish bepul. 4 g dan kam buyurtma uchun — 45 000 so'm.")
+            lines.append("🚚 4 g dan boshlab yetkazib berish bepul. 4 g dan kam buyurtma uchun — 30 000 so'm.")
         else:
             lines.append("<b>Yetkazib berish:</b> bepul")
         lines.append("🏬 Olib ketish har doim bepul.")
@@ -3425,7 +3413,7 @@ def cart_text(items, user_id=None):
         lines.append(f"<b>Общий вес:</b> {format_weight_value(total_weight)} г")
         if delivery_price > 0:
             lines.append(f"<b>Доставка:</b> {format_price(delivery_price)}")
-            lines.append("🚚 При заказе от 4 г доставка бесплатная. Если общий вес меньше 4 г — доставка 45 000 сум.")
+            lines.append("🚚 При заказе от 4 г доставка бесплатная. Если общий вес меньше 4 г — доставка 30 000 сум.")
         else:
             lines.append("<b>Доставка:</b> бесплатно")
         lines.append("🏬 Самовывоз всегда бесплатный.")
@@ -3717,15 +3705,71 @@ async def send_product(callback: CallbackQuery, product_id: int, in_cart=False, 
         await send_product_description_messages(callback.message, description_messages)
 
 
-
 async def send_rich_product_slideshow(message: Message, media_items, caption, reply_markup):
-    """
-    Rich Message is intentionally disabled for the stable VPS build.
+    """Try Telegram Rich slideshow with explicit media references.
 
-    Telegram currently rejects diamant.uz media in sendRichMessage with
-    RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND, while the normal photo/video sending path
-    works. Keep the function as a no-op so call sites safely fall back.
+    The old Rich build put public URLs directly into <img>/<video>. Telegram
+    rejected diamant.uz files with RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND. Bot API
+    10.2+ supports rich_message.media with tg://photo?id=... links, which is
+    the safer format. Any failure returns False and the caller uses the stable
+    photo/video fallback.
     """
+    if not RICH_CAROUSEL_ENABLED:
+        return False
+
+    blocks = []
+    media_payload = []
+    for index, (url, media_type) in enumerate((media_items or [])[:MAX_RICH_CAROUSEL_MEDIA]):
+        media_id = f"m{index}"
+        if media_type == "video":
+            blocks.append(f'<video src="tg://video?id={media_id}"/>')
+            media_payload.append({
+                "id": media_id,
+                "media": {"type": "video", "media": str(url)},
+            })
+        else:
+            blocks.append(f'<img src="tg://photo?id={media_id}"/>')
+            media_payload.append({
+                "id": media_id,
+                "media": {"type": "photo", "media": str(url)},
+            })
+
+    if not media_payload:
+        return False
+
+    rich_html = (
+        "<tg-slideshow>"
+        + "".join(blocks)
+        + f"<figcaption>{caption}</figcaption>"
+        + "</tg-slideshow>"
+    )
+    payload = {
+        "chat_id": message.chat.id,
+        "rich_message": {
+            "html": rich_html,
+            "media": media_payload,
+        },
+    }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
+
+    try:
+        session = await get_http_session()
+        token = getattr(bot, "token", None)
+        if not token:
+            return False
+        api_url = f"https://api.telegram.org/bot{token}/sendRichMessage"
+        async with session.post(api_url, json=payload) as response:
+            result = await response.json(content_type=None)
+            if response.status == 200 and result.get("ok"):
+                return True
+            logger.warning(
+                "Rich carousel failed: status=%s response=%s",
+                response.status,
+                result,
+            )
+    except Exception:
+        logger.exception("Rich carousel failed")
     return False
 
 
@@ -3737,26 +3781,24 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
     media_items = public_media_urls_for_product(product_id)
     public_media, public_media_type = media_items[0] if media_items else (None, None)
     user_id = user_id or message.chat.id
-    caption, description_messages = product_caption_payload(
-        product,
-        has_media=public_media is not None,
-        user_id=user_id,
-    )
-    inline_markup = product_carousel_keyboard(product_id, user_id=user_id)
+    caption, description_messages = product_caption_payload(product, has_media=public_media is not None, user_id=user_id)
+    inline_markup = product_keyboard(product_id, len(media_items) or 1, 0, user_id=user_id)
+    rich_markup = product_rich_keyboard(product_id, user_id=user_id)
+    
+    # Получаем состояние пользователя для определения правильной ReplyKeyboard
+    state = USER_STATES.get(user_id, {})
+    view = state.get("view")
+    if view == "search_results":
+        total = state.get("search_total", 0)
+        offset = state.get("search_offset", 0)
+        reply_kb = search_results_keyboard(user_id, total, offset)
+    else:
+        reply_kb = main_menu(user_id)
 
-    # Preferred path: Telegram Rich Message slideshow, max 3 media.
-    if media_items:
-        if await send_rich_product_slideshow(
-            message,
-            media_items,
-            caption,
-            inline_markup,
-        ):
-            await send_product_description_messages(message, description_messages)
-            return
+    if media_items and await send_rich_product_slideshow(message, media_items, caption, rich_markup):
+        await send_product_description_messages(message, description_messages)
+        return
 
-    # Safe fallback for older/unsupported Bot API/client behavior:
-    # send only the first media exactly like before.
     if public_media_type == "photo":
         try:
             data, filename, content_type = await download_public_media(public_media)
@@ -3794,48 +3836,26 @@ async def send_product_card(message: Message, product_id: int, user_id=None):
 
 
 async def prepare_product_card(product_id: int, user_id=None):
-    """Prepare a catalog card. Rich slideshow uses public URLs directly."""
+    """Prepare one catalog card without sending it.
+
+    Media download happens here, so several cards can be prepared concurrently.
+    The returned payload is later sent in a strict order.
+    """
     product = get_product(product_id)
     if not product:
         return None
 
     media_items = public_media_urls_for_product(product_id)
-    has_media = bool(media_items)
+    public_media, public_media_type = media_items[0] if media_items else (None, None)
     caption, description_messages = product_caption_payload(
         product,
-        has_media=has_media,
+        has_media=public_media is not None,
         user_id=user_id,
     )
-    inline_markup = product_carousel_keyboard(product_id, user_id=user_id)
+    inline_markup = product_keyboard(product_id, len(media_items) or 1, 0, user_id=user_id)
 
-    return {
-        "product_id": product_id,
-        "caption": caption,
-        "description_messages": description_messages,
-        "reply_markup": inline_markup,
-        "media_items": media_items,
-    }
-
-
-async def send_prepared_product_card(message: Message, prepared):
-    """Send one prepared card in order using the stable photo/video fallback."""
-    if not prepared:
-        return
-
-    caption = prepared["caption"]
-    markup = prepared["reply_markup"]
-    media_items = prepared.get("media_items") or []
-
-    if media_items:
-        if await send_rich_product_slideshow(message, media_items, caption, markup):
-            await send_product_description_messages(
-                message,
-                prepared.get("description_messages"),
-            )
-            return
-
-        # Fallback: if rich slideshow is rejected, only download/send first media.
-        public_media, public_media_type = media_items[0]
+    prepared_media = None
+    if public_media and public_media_type in {"photo", "video"}:
         try:
             data, filename, content_type = await download_public_media(public_media)
             valid = (
@@ -3844,29 +3864,57 @@ async def send_prepared_product_card(message: Message, prepared):
                 public_media_type == "video" and content_type.startswith("video/")
             )
             if valid:
-                if public_media_type == "photo":
-                    await message.answer_photo(
-                        photo=BufferedInputFile(data, filename=filename),
-                        caption=caption,
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=markup,
-                    )
-                else:
-                    await message.answer_video(
-                        video=BufferedInputFile(data, filename=filename),
-                        caption=caption,
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=markup,
-                    )
-                await send_product_description_messages(
-                    message,
-                    prepared.get("description_messages"),
-                )
-                return
+                prepared_media = {
+                    "type": public_media_type,
+                    "data": data,
+                    "filename": filename,
+                }
         except Exception:
-            logger.exception("Fallback media send failed for product %s", prepared.get("product_id"))
+            prepared_media = None
 
-    await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+    return {
+        "product_id": product_id,
+        "caption": caption,
+        "description_messages": description_messages,
+        "reply_markup": inline_markup,
+        "rich_reply_markup": product_rich_keyboard(product_id, user_id=user_id),
+        "media_items": media_items,
+        "media": prepared_media,
+    }
+
+
+async def send_prepared_product_card(message: Message, prepared):
+    """Send a previously prepared card and its description in strict order."""
+    if not prepared:
+        return
+
+    caption = prepared["caption"]
+    markup = prepared["reply_markup"]
+    rich_markup = prepared.get("rich_reply_markup")
+    media_items = prepared.get("media_items") or []
+    media = prepared.get("media")
+
+    if media_items and await send_rich_product_slideshow(message, media_items, caption, rich_markup):
+        await send_product_description_messages(message, prepared.get("description_messages"))
+        return
+
+    if media and media["type"] == "photo":
+        await message.answer_photo(
+            photo=BufferedInputFile(media["data"], filename=media["filename"]),
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup,
+        )
+    elif media and media["type"] == "video":
+        await message.answer_video(
+            video=BufferedInputFile(media["data"], filename=media["filename"]),
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup,
+        )
+    else:
+        await message.answer(caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+
     await send_product_description_messages(message, prepared.get("description_messages"))
 
 
@@ -4707,8 +4755,8 @@ async def notify_managers(order_code):
 
 
 async def send_cards_page(callback: CallbackQuery, products, offset, kind, category_id=None):
-    page_products = products[:PAGE_SIZE]
-    has_next = len(products) > PAGE_SIZE
+    page_products = products[:5]
+    has_next = len(products) > 5
     if not page_products:
         await show_text(callback, "Товары не найдены.", reply_markup=main_menu(callback.from_user.id))
         await callback.answer()
@@ -4722,7 +4770,7 @@ async def send_cards_page(callback: CallbackQuery, products, offset, kind, categ
 
     # Отправляем навигацию с сохранением ReplyKeyboard
     await callback.message.answer(
-        f"Показал {len(page_products)} товара. Можно открыть следующий набор.",
+        "Показал 5 товаров. Можно открыть следующий набор.",
         reply_markup=cards_nav_keyboard(kind, offset, has_next, category_id),
     )
     await callback.answer()
@@ -5886,7 +5934,7 @@ async def category_products_cards(callback: CallbackQuery):
     offset = int(offset)
     products = get_products_for_category(category_id, offset)
     if len(products) == 5:
-        products = products + get_products_for_category(category_id, offset + PAGE_SIZE)[:1]
+        products = products + get_products_for_category(category_id, offset + 5)[:1]
     await send_cards_page(callback, products, offset, "cat", category_id)
 
 
@@ -6506,5 +6554,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
