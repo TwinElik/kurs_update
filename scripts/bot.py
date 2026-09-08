@@ -3821,37 +3821,33 @@ async def send_rich_product_slideshow(message: Message, media_items, caption, re
         if file_id:
             uploaded_items.append((file_id, media_type))
 
-    blocks = []
-    media_payload = []
-    for index, (file_id, media_type) in enumerate(uploaded_items):
-        media_id = f"m{index}"
+    slideshow_blocks = []
+    for file_id, media_type in uploaded_items:
         if media_type == "video":
-            blocks.append(f'<video src="tg://video?id={media_id}"/>')
-            media_payload.append({
-                "id": media_id,
-                "media": {"type": "video", "media": file_id},
+            slideshow_blocks.append({
+                "type": "video",
+                "video": {"type": "video", "media": file_id},
             })
         else:
-            blocks.append(f'<img src="tg://photo?id={media_id}"/>')
-            media_payload.append({
-                "id": media_id,
-                "media": {"type": "photo", "media": file_id},
+            slideshow_blocks.append({
+                "type": "photo",
+                "photo": {"type": "photo", "media": file_id},
             })
 
-    if not media_payload:
+    if not slideshow_blocks:
         return False
 
-    rich_html = (
-        "<tg-slideshow>"
-        + "".join(blocks)
-        + f"<figcaption>{caption}</figcaption>"
-        + "</tg-slideshow>"
-    )
+    plain_caption = telegram_html_visible_text(caption)
     payload = {
         "chat_id": message.chat.id,
         "rich_message": {
-            "html": rich_html,
-            "media": media_payload,
+            "blocks": [
+                {
+                    "type": "slideshow",
+                    "blocks": slideshow_blocks,
+                    "caption": {"text": plain_caption},
+                }
+            ],
         },
     }
     if reply_markup is not None:
