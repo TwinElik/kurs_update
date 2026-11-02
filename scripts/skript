@@ -1,0 +1,1 @@
+mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6Digp/3Fb8u2UtXpNLAfntg9cva0q0cc3h71ewW0Ps islom@OPTIMUS' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
